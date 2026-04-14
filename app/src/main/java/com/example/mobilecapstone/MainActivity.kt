@@ -1,4 +1,4 @@
-package com.example.mobilecapstone
+﻿package com.example.mobilecapstone
 
 import androidx.compose.material3.ExperimentalMaterial3Api
 import android.graphics.Bitmap
@@ -32,6 +32,7 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.Checkroom
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Insights
@@ -52,6 +53,8 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -266,6 +269,16 @@ private fun FashionCapstoneApp() {
                 modifier = Modifier.padding(innerPadding),
                 uiState = uiState,
                 summary = summary,
+                sampleOptions = PoseExtractionPipeline.sampleAssets,
+                onSelectAsset = { assetName ->
+                    uiState = uiState.copy(
+                        selectedAsset = assetName,
+                        jsonOutput = "",
+                        featureJsonOutput = "",
+                        outputFilePath = "",
+                        statusMessage = "샘플이 변경되었어. 분석을 다시 실행해."
+                    )
+                },
                 onRun = {
                     if (uiState.isRunning) return@AnalysisResultScreen
                     scope.launch {
@@ -542,7 +555,7 @@ private fun HomeScreen(
             StatCard(
                 modifier = Modifier.weight(1f),
                 title = "추천 상태",
-                value = if (summary == null) "준비 전" else "생성 가능"
+                value = if (summary == null) "준비 중" else "생성 가능"
             )
         }
 
@@ -562,28 +575,28 @@ private fun HomeScreen(
         SectionTitle("빠른 이동")
         QuickActionCard(
             icon = { Icon(Icons.Rounded.CameraAlt, contentDescription = null) },
-            title = "CaptureScreen",
+            title = "촬영 화면",
             description = "카메라 연결 전 단계지만 샘플 선택과 촬영 흐름을 미리 점검할 수 있어.",
             buttonLabel = "촬영 화면 열기",
             onClick = onStartCapture
         )
         QuickActionCard(
             icon = { Icon(Icons.Rounded.Insights, contentDescription = null) },
-            title = "AnalysisResultScreen",
-            description = "현재 구현된 포즈 추출 기능과 JSON 결과를 앱다운 화면으로 확인해.",
+            title = "분석 결과 화면",
+            description = "현재 구현된 분석 기능과 JSON 결과를 앱 화면에서 확인할 수 있어.",
             buttonLabel = "분석 화면 열기",
             onClick = onOpenAnalysis
         )
         QuickActionCard(
             icon = { Icon(Icons.Rounded.Checkroom, contentDescription = null) },
-            title = "RecommendationListScreen",
+            title = "추천 목록 화면",
             description = "백엔드 연결 전까지는 더미 추천 카드로 전체 플로우를 검증할 수 있어.",
             buttonLabel = "추천 목록 보기",
             onClick = onOpenRecommendations
         )
         QuickActionCard(
             icon = { Icon(Icons.Rounded.History, contentDescription = null) },
-            title = "HistoryScreen",
+            title = "기록 화면",
             description = "세션 중 실행한 분석 결과를 리스트 형태로 쌓아보는 껍데기 화면이야.",
             buttonLabel = "기록 보기",
             onClick = onOpenHistory
@@ -609,7 +622,7 @@ private fun CaptureScreen(
     ) {
         ScreenHeroCard(
             icon = { Icon(Icons.Rounded.CameraAlt, contentDescription = null) },
-            title = "CaptureScreen",
+            title = "촬영 화면",
             description = "실제 CameraX 연결 전까지는 샘플 이미지 선택으로 촬영 흐름을 대체해 둘 수 있어."
         )
 
@@ -700,6 +713,8 @@ private fun AnalysisResultScreen(
     modifier: Modifier = Modifier,
     uiState: PipelineUiState,
     summary: ResultSummary?,
+    sampleOptions: List<String>,
+    onSelectAsset: (String) -> Unit,
     onRun: () -> Unit,
     onCopyRaw: () -> Unit,
     onCopyFeature: () -> Unit,
@@ -707,6 +722,7 @@ private fun AnalysisResultScreen(
 ) {
     var showRawJson by remember { mutableStateOf(false) }
     var showFeatureJson by remember { mutableStateOf(false) }
+    var showAssetMenu by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier
@@ -717,8 +733,8 @@ private fun AnalysisResultScreen(
     ) {
         ScreenHeroCard(
             icon = { Icon(Icons.Rounded.Insights, contentDescription = null) },
-            title = "AnalysisResultScreen",
-            description = "현재 프로젝트의 실제 포즈 추출 기능을 그대로 유지하면서 앱다운 분석 화면으로 정리했어."
+            title = "분석 결과 화면",
+            description = "현재 프로젝트의 실제 분석 기능을 그대로 유지하면서 앱다운 화면으로 정리했어."
         )
 
         uiState.sampleBitmap?.let { bitmap ->
@@ -730,12 +746,46 @@ private fun AnalysisResultScreen(
                     modifier = Modifier.padding(18.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Text("선택된 이미지", style = MaterialTheme.typography.titleLarge)
-                    Text(
-                        text = uiState.selectedAsset,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("선택된 이미지", style = MaterialTheme.typography.titleLarge)
+                            Text(
+                                text = uiState.selectedAsset,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Box {
+                            OutlinedButton(
+                                onClick = { showAssetMenu = true },
+                                shape = RoundedCornerShape(14.dp)
+                            ) {
+                                Text("샘플 선택")
+                                Icon(
+                                    imageVector = Icons.Rounded.KeyboardArrowDown,
+                                    contentDescription = null
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = showAssetMenu,
+                                onDismissRequest = { showAssetMenu = false }
+                            ) {
+                                sampleOptions.forEach { asset ->
+                                    DropdownMenuItem(
+                                        text = { Text(asset.substringBeforeLast(".")) },
+                                        onClick = {
+                                            showAssetMenu = false
+                                            onSelectAsset(asset)
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
                     Image(
                         bitmap = bitmap.asImageBitmap(),
                         contentDescription = null,
@@ -768,7 +818,7 @@ private fun AnalysisResultScreen(
                             Text(
                                 text = when (step.status) {
                                     StepStatus.PENDING -> "준비 중"
-                                    StepStatus.RUNNING -> "실행 중"
+                                    StepStatus.RUNNING -> "진행 중"
                                     StepStatus.COMPLETED -> "완료"
                                 },
                                 style = MaterialTheme.typography.bodySmall,
@@ -797,14 +847,14 @@ private fun AnalysisResultScreen(
                                 strokeWidth = 2.dp,
                                 color = MaterialTheme.colorScheme.onPrimary
                             )
-                            Text("포즈 추출 실행 중")
+                            Text("분석 실행 중")
                         }
                     } else {
                         Text(
                             if ("pose" in uiState.completedSteps) {
-                                "포즈 추출 다시 실행"
+                                "분석 다시 실행"
                             } else {
-                                "포즈 추출 시작"
+                                "분석 시작"
                             }
                         )
                     }
@@ -838,7 +888,7 @@ private fun AnalysisResultScreen(
 
                 if (summary == null) {
                     Text(
-                        text = "아직 분석 결과가 없어. 위 버튼을 눌러 먼저 포즈 추출을 실행해.",
+                        text = "아직 분석 결과가 없어. 위 버튼을 눌러 먼저 분석을 실행해.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -871,12 +921,12 @@ private fun AnalysisResultScreen(
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         StatCard(
                             modifier = Modifier.weight(1f),
-                            title = "Face Shape",
+                            title = "얼굴형",
                             value = humanizeToken(summary.faceShape)
                         )
                         StatCard(
                             modifier = Modifier.weight(1f),
-                            title = "Skin Tone",
+                            title = "피부 톤",
                             value = "${humanizeToken(summary.skinUndertone)} / ${humanizeToken(summary.skinClarity)}"
                         )
                     }
@@ -938,7 +988,7 @@ private fun RecommendationListScreen(
     ) {
         ScreenHeroCard(
             icon = { Icon(Icons.Rounded.Checkroom, contentDescription = null) },
-            title = "RecommendationListScreen",
+            title = "추천 목록 화면",
             description = "백엔드 추천 API가 들어오면 이 화면의 더미 카드만 실제 데이터 카드로 바꾸면 돼."
         )
 
@@ -946,7 +996,7 @@ private fun RecommendationListScreen(
             PlaceholderFeatureCard(
                 icon = { Icon(Icons.Rounded.Tune, contentDescription = null) },
                 title = "분석 결과가 필요해",
-                description = "추천 목록을 보기 전에 AnalysisResultScreen에서 포즈 추출을 한 번 실행해."
+                description = "추천 목록을 보기 전에 분석 결과 화면에서 분석을 한 번 실행해."
             )
             FilledTonalButton(
                 onClick = onGoAnalysis,
@@ -1043,7 +1093,7 @@ private fun RecommendationDetailScreen(
                 modifier = Modifier.padding(22.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                SoftPill(text = "RecommendationDetailScreen")
+                SoftPill(text = "추천 상세 화면")
                 Text(text = item.title, style = MaterialTheme.typography.headlineLarge)
                 Text(
                     text = item.subtitle,
@@ -1095,7 +1145,7 @@ private fun HistoryScreen(
     ) {
         ScreenHeroCard(
             icon = { Icon(Icons.Rounded.History, contentDescription = null) },
-            title = "HistoryScreen",
+            title = "기록 화면",
             description = "백엔드 저장이 붙기 전에도 세션 히스토리를 미리 확인할 수 있는 화면이야."
         )
 
@@ -1103,7 +1153,7 @@ private fun HistoryScreen(
             PlaceholderFeatureCard(
                 icon = { Icon(Icons.Rounded.Insights, contentDescription = null) },
                 title = "기록이 아직 없어",
-                description = "AnalysisResultScreen에서 분석을 실행하면 세션 히스토리가 여기에 추가돼."
+                description = "분석 결과 화면에서 분석을 실행하면 세션 히스토리가 여기에 추가돼."
             )
             FilledTonalButton(
                 onClick = onGoAnalysis,
@@ -1164,7 +1214,7 @@ private fun SettingsScreen(
     ) {
         ScreenHeroCard(
             icon = { Icon(Icons.Rounded.Settings, contentDescription = null) },
-            title = "SettingsScreen",
+            title = "설정 화면",
             description = "동기화, 알림, 계정 관련 껍데기를 미리 잡아두면 백엔드 붙일 때 빨라져."
         )
 
@@ -1430,17 +1480,17 @@ private fun StepStatusPill(
 ) {
     val (label, containerColor, contentColor) = when (status) {
         StepStatus.PENDING -> Triple(
-            "WAITING",
+            "대기",
             MaterialTheme.colorScheme.surfaceVariant,
             MaterialTheme.colorScheme.onSurfaceVariant
         )
         StepStatus.RUNNING -> Triple(
-            "RUNNING",
+            "진행중",
             MaterialTheme.colorScheme.primaryContainer,
             MaterialTheme.colorScheme.onPrimaryContainer
         )
         StepStatus.COMPLETED -> Triple(
-            "DONE",
+            "완료",
             MaterialTheme.colorScheme.secondaryContainer,
             MaterialTheme.colorScheme.onSecondaryContainer
         )
@@ -1462,9 +1512,9 @@ private fun StepStatusPill(
 
 private fun stepStatusLabel(status: StepStatus): String {
     return when (status) {
-        StepStatus.PENDING -> "Waiting"
-        StepStatus.RUNNING -> "In progress"
-        StepStatus.COMPLETED -> "Completed"
+        StepStatus.PENDING -> "대기 중"
+        StepStatus.RUNNING -> "진행 중"
+        StepStatus.COMPLETED -> "완료됨"
     }
 }
 
@@ -1674,7 +1724,7 @@ private data class PipelineUiState(
     fun beginRun(): PipelineUiState {
         return copy(
             isRunning = true,
-            statusMessage = "Analysis started",
+            statusMessage = "분석을 시작했어요",
             jsonOutput = "",
             featureJsonOutput = "",
             outputFilePath = "",
@@ -1691,9 +1741,9 @@ private data class PipelineUiState(
         return copy(
             isRunning = true,
             statusMessage = when (status) {
-                StepStatus.PENDING -> "${stepTitle(stepId)} waiting"
-                StepStatus.RUNNING -> "${stepTitle(stepId)} in progress"
-                StepStatus.COMPLETED -> "${stepTitle(stepId)} completed"
+                StepStatus.PENDING -> "${stepTitle(stepId)} 대기 중"
+                StepStatus.RUNNING -> "${stepTitle(stepId)} 진행 중"
+                StepStatus.COMPLETED -> "${stepTitle(stepId)} 완료됨"
             },
             completedSteps = updatedCompleted,
             steps = steps.map { step ->
@@ -1780,3 +1830,4 @@ private data class PipelineUiState(
         return steps.firstOrNull { it.id == stepId }?.title ?: stepId
     }
 }
+

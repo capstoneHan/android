@@ -78,49 +78,74 @@ object PoseExtractionPipeline {
         assetName: String,
         onStepStatusChanged: ((String, StepStatus) -> Unit)? = null
     ): ExtractionResult {
+        // 사진을 비트맵 변환하여 파이프라인에 넣을 수 있게 변환
         val bitmap = loadSampleBitmap(context, assetName)
+
+        // 이미지 객체 생성
         val image = InputImage.fromBitmap(bitmap, 0)
+
+        // 사진 한장만 분석
         val poseOptions = PoseDetectorOptions.Builder()
             .setDetectorMode(PoseDetectorOptions.SINGLE_IMAGE_MODE)
             .build()
+
+        // 사진 한장만 분석
         val segmentationOptions = SelfieSegmenterOptions.Builder()
             .setDetectorMode(SelfieSegmenterOptions.SINGLE_IMAGE_MODE)
             .build()
+
+        // 얼굴 : 정확도 우선, 랜드마크(눈, 코, 입) 안찍기, 얼굴형 외곽 뽑기
         val faceOptions = FaceDetectorOptions.Builder()
             .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_ACCURATE)
             .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_NONE)
             .setContourMode(FaceDetectorOptions.CONTOUR_MODE_ALL)
             .build()
 
+        // ML Kit 포즈 검출기 생성
         val detector = PoseDetection.getClient(poseOptions)
+        // ML Kit 실루엣 분리기 생성
         val segmenter = Segmentation.getClient(segmentationOptions)
+        // ML Kit 얼굴 검출기 생성
         val faceDetector = FaceDetection.getClient(faceOptions)
+        // 파이프 라인 전체는 비동기, 파이프 라인 내부는 동기 방식으로
+        // 디버깅을 쉽게하고 성능에 제약이 최소화되도록 파이프라인을 구성함
         try {
             onStepStatusChanged?.invoke("pose", StepStatus.RUNNING)
             val pose = Tasks.await(detector.process(image))
+            // pose로 체형 계산용 숫자를 뽑는과정
             val derivedMetrics = buildDerivedMetricsJson(pose)
             onStepStatusChanged?.invoke("pose", StepStatus.COMPLETED)
 
+            // 얼굴 정보 추출
             onStepStatusChanged?.invoke("face", StepStatus.RUNNING)
             val faceDetection = detectFaceWithFallback(
                 bitmap = bitmap,
                 pose = pose,
                 detector = faceDetector
             )
+
+            // 얼굴 정보 JSON 화 하기
             val faceJson = buildFaceJson(faceDetection)
             onStepStatusChanged?.invoke("face", StepStatus.COMPLETED)
 
+            // 색감 / 톤 추출
             onStepStatusChanged?.invoke("color", StepStatus.RUNNING)
+            // 얼굴 영역 픽셀값을 기반으로 피부톤 분석
             val colorToneJson = buildColorToneJson(faceDetection)
             onStepStatusChanged?.invoke("color", StepStatus.COMPLETED)
 
+            // 실루엣 추출
             onStepStatusChanged?.invoke("silhouette", StepStatus.RUNNING)
+            // 사람 마스크 추출
             val segmentationMask = Tasks.await(segmenter.process(image))
+            // 마스크 기반으로 어깨, 허리, 골반, 허벅지 폭 계산
             val silhouetteJson = buildSilhouetteJson(
                 pose = pose,
                 segmentationMask = segmentationMask
             )
             onStepStatusChanged?.invoke("silhouette", StepStatus.COMPLETED)
+
+            // 추출된 원본 데이터 JSON 화
             val output = JSONObject()
                 .put(
                     "meta",
@@ -139,6 +164,8 @@ object PoseExtractionPipeline {
                 .put("face", faceJson)
                 .put("color_tone", colorToneJson)
                 .put("silhouette", silhouetteJson)
+
+            // 추천 / 후처리용 특징 데이터 JSON 화
             val featureOutput = buildFeatureJson(
                 pose = pose,
                 derivedMetrics = derivedMetrics,
@@ -147,19 +174,27 @@ object PoseExtractionPipeline {
                 colorToneJson = colorToneJson
             )
 
+            // 최종 결과 파일 저장
             val file = writeJsonFile(
                 context = context,
                 name = assetName.substringBeforeLast('.') + "_analysis_result.json",
                 contents = output.toString(2)
             )
+
+            // 최종 결과 반환
             return ExtractionResult(
-                step = PipelineStep(id = "pose", title = "Style analysis", status = StepStatus.COMPLETED),
+                step = PipelineStep(
+                    id = "pose",
+                    title = "Style analysis",
+                    status = StepStatus.COMPLETED
+                ),
                 jsonOutput = output.toString(2),
                 featureJsonOutput = featureOutput.toString(2),
                 outputFilePath = file.absolutePath,
                 completedStepIds = setOf("pose", "face", "color", "silhouette")
             )
         } finally {
+            // 사용한 ML Kit detector 정리
             detector.close()
             segmenter.close()
             faceDetector.close()
@@ -179,6 +214,8 @@ object PoseExtractionPipeline {
             .put("right_ankle", pointJson(pose.getPoseLandmark(PoseLandmark.RIGHT_ANKLE)))
     }
 
+    // pose에는 ML Kit가 잡은 랜드마크 좌표들이 들어 있음
+    // 그 랜드마크들로 거리를 계산하여 숫자를 나타냄
     private fun buildDerivedMetricsJson(pose: Pose): JSONObject {
         val leftShoulder = pose.getPoseLandmark(PoseLandmark.LEFT_SHOULDER)
         val rightShoulder = pose.getPoseLandmark(PoseLandmark.RIGHT_SHOULDER)
@@ -188,18 +225,45 @@ object PoseExtractionPipeline {
         val leftAnkle = pose.getPoseLandmark(PoseLandmark.LEFT_ANKLE)
         val rightAnkle = pose.getPoseLandmark(PoseLandmark.RIGHT_ANKLE)
 
+        // 좌우 어깨 랜드마크의 x축 거리
         val shoulderWidth = distanceX(leftShoulder, rightShoulder)
+
+        // 좌우 골반 랜드마크의 x축 거리
         val hipWidth = distanceX(leftHip, rightHip)
+
+        // 좌우 어깨의 평균 y값
+        // 상체 시작선(어깨 중심선)처럼 사용
         val centerShoulderY = averageY(leftShoulder, rightShoulder)
+
+        // 좌우 골반의 평균 y값
+        // 상체와 하체를 나누는 기준선처럼 사용
         val centerHipY = averageY(leftHip, rightHip)
+
+        // 좌우 발목의 평균 y값
+        // 하체 끝점처럼 사용
         val centerAnkleY = averageY(leftAnkle, rightAnkle)
 
         return JSONObject()
+            // 절대 어깨 너비
             .put("shoulder_width", shoulderWidth)
+
+            // 절대 골반 너비
             .put("hip_width", hipWidth)
+
+            // 어깨와 골반의 상대 비율
+            // 1보다 크면 어깨가 골반보다 넓은 편
             .put("shoulder_to_hip_ratio", safeRatio(shoulderWidth, hipWidth))
+
+            // 어깨 중심선부터 골반 중심선까지의 세로 길이
+            // 상체 길이의 근사치
             .put("torso_height", absoluteDelta(centerShoulderY, centerHipY))
+
+            // 골반 중심선부터 발목 중심선까지의 세로 길이
+            // 다리 길이의 근사치
             .put("estimated_leg_length", absoluteDelta(centerHipY, centerAnkleY))
+
+            // 코부터 발목 중심선까지의 세로 길이
+            // 전신 높이의 근사치
             .put("estimated_full_body_height", absoluteDelta(nose?.position?.y, centerAnkleY))
     }
 
