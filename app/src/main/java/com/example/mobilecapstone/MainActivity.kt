@@ -269,13 +269,18 @@ private fun FashionCapstoneApp() {
                 onRun = {
                     if (uiState.isRunning) return@AnalysisResultScreen
                     scope.launch {
-                        uiState = uiState.startStep("pose")
+                        uiState = uiState.beginRun()
                         val selectedAsset = uiState.selectedAsset
                         val outcome = withContext(Dispatchers.IO) {
                             runCatching {
                                 PoseExtractionPipeline.runPoseExtraction(
                                     context = context,
-                                    assetName = selectedAsset
+                                    assetName = selectedAsset,
+                                    onStepStatusChanged = { stepId, status ->
+                                        scope.launch {
+                                            uiState = uiState.updateStepStatus(stepId, status)
+                                        }
+                                    }
                                 )
                             }
                         }
@@ -770,7 +775,7 @@ private fun AnalysisResultScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        SoftPill(text = step.status.name)
+                        StepStatusPill(status = step.status)
                     }
                 }
 
@@ -860,6 +865,19 @@ private fun AnalysisResultScreen(
                             modifier = Modifier.weight(1f),
                             title = "다리 밸런스",
                             value = humanizeToken(summary.legBalance)
+                        )
+                    }
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        StatCard(
+                            modifier = Modifier.weight(1f),
+                            title = "Face Shape",
+                            value = humanizeToken(summary.faceShape)
+                        )
+                        StatCard(
+                            modifier = Modifier.weight(1f),
+                            title = "Skin Tone",
+                            value = "${humanizeToken(summary.skinUndertone)} / ${humanizeToken(summary.skinClarity)}"
                         )
                     }
 
@@ -1406,6 +1424,51 @@ private fun SoftPill(
 }
 
 @Composable
+private fun StepStatusPill(
+    status: StepStatus,
+    modifier: Modifier = Modifier
+) {
+    val (label, containerColor, contentColor) = when (status) {
+        StepStatus.PENDING -> Triple(
+            "WAITING",
+            MaterialTheme.colorScheme.surfaceVariant,
+            MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        StepStatus.RUNNING -> Triple(
+            "RUNNING",
+            MaterialTheme.colorScheme.primaryContainer,
+            MaterialTheme.colorScheme.onPrimaryContainer
+        )
+        StepStatus.COMPLETED -> Triple(
+            "DONE",
+            MaterialTheme.colorScheme.secondaryContainer,
+            MaterialTheme.colorScheme.onSecondaryContainer
+        )
+    }
+
+    Surface(
+        modifier = modifier,
+        color = containerColor,
+        shape = CircleShape
+    ) {
+        Text(
+            text = label,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            style = MaterialTheme.typography.labelLarge,
+            color = contentColor
+        )
+    }
+}
+
+private fun stepStatusLabel(status: StepStatus): String {
+    return when (status) {
+        StepStatus.PENDING -> "Waiting"
+        StepStatus.RUNNING -> "In progress"
+        StepStatus.COMPLETED -> "Completed"
+    }
+}
+
+@Composable
 private fun ChipButton(
     label: String,
     selected: Boolean,
@@ -1481,6 +1544,9 @@ private data class ResultSummary(
     val waistDefinition: String,
     val shoulderProfile: String,
     val legBalance: String,
+    val faceShape: String,
+    val skinUndertone: String,
+    val skinClarity: String,
     val tags: List<String>
 ) {
     companion object {
@@ -1494,6 +1560,8 @@ private data class ResultSummary(
                 val derived = pose?.optJSONObject("derived_metrics")
                 val silhouette = feature.optJSONObject("silhouette_features")
                 val bodyFrame = feature.optJSONObject("body_frame")
+                val faceFeatures = feature.optJSONObject("face_features")
+                val colorFeatures = feature.optJSONObject("color_features")
 
                 ResultSummary(
                     landmarkCount = pose?.optInt("landmark_count", 0) ?: 0,
@@ -1502,6 +1570,9 @@ private data class ResultSummary(
                     waistDefinition = silhouette?.optString("waist_definition", "unknown") ?: "unknown",
                     shoulderProfile = bodyFrame?.optString("shoulder_profile", "unknown") ?: "unknown",
                     legBalance = bodyFrame?.optString("leg_balance", "unknown") ?: "unknown",
+                    faceShape = faceFeatures?.optString("shape", "unknown") ?: "unknown",
+                    skinUndertone = colorFeatures?.optString("undertone", "unknown") ?: "unknown",
+                    skinClarity = colorFeatures?.optString("clarity", "unknown") ?: "unknown",
                     tags = jsonArrayToList(feature.optJSONArray("style_tags"))
                 )
             }.getOrNull()
@@ -1600,6 +1671,46 @@ private data class PipelineUiState(
             featureJsonOutput
         }
 
+    fun beginRun(): PipelineUiState {
+        return copy(
+            isRunning = true,
+            statusMessage = "Analysis started",
+            jsonOutput = "",
+            featureJsonOutput = "",
+            outputFilePath = "",
+            completedSteps = emptySet(),
+            steps = steps.map { it.copy(status = StepStatus.PENDING) }
+        )
+    }
+
+    fun updateStepStatus(stepId: String, status: StepStatus): PipelineUiState {
+        val updatedCompleted = when (status) {
+            StepStatus.COMPLETED -> completedSteps + stepId
+            else -> completedSteps
+        }
+        return copy(
+            isRunning = true,
+            statusMessage = when (status) {
+                StepStatus.PENDING -> "${stepTitle(stepId)} waiting"
+                StepStatus.RUNNING -> "${stepTitle(stepId)} in progress"
+                StepStatus.COMPLETED -> "${stepTitle(stepId)} completed"
+            },
+            completedSteps = updatedCompleted,
+            steps = steps.map { step ->
+                when (step.id) {
+                    stepId -> step.copy(status = status)
+                    else -> {
+                        if (step.id in updatedCompleted) {
+                            step.copy(status = StepStatus.COMPLETED)
+                        } else {
+                            step.copy(status = StepStatus.PENDING)
+                        }
+                    }
+                }
+            }
+        )
+    }
+
     fun startStep(stepId: String): PipelineUiState {
         return copy(
             isRunning = true,
@@ -1620,7 +1731,7 @@ private data class PipelineUiState(
     }
 
     fun completeStep(result: ExtractionResult): PipelineUiState {
-        val updatedCompleted = completedSteps + result.step.id
+        val updatedCompleted = completedSteps + result.completedStepIds
         return copy(
             isRunning = false,
             statusMessage = "${result.step.title} 완료",
