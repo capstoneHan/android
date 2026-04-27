@@ -40,6 +40,7 @@ android {
 }
 
 dependencies {
+    implementation("androidx.compose.material:material-icons-extended")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
@@ -49,6 +50,7 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
     implementation("com.google.mlkit:pose-detection:18.0.0-beta5")
+    implementation("com.google.mlkit:face-detection:16.1.7")
     implementation("com.google.mlkit:segmentation-selfie:16.0.0-beta6")
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
