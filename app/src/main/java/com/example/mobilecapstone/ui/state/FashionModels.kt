@@ -1,0 +1,350 @@
+﻿package com.example.mobilecapstone
+
+import android.content.Context
+import android.graphics.Bitmap
+import java.util.Locale
+import org.json.JSONArray
+import org.json.JSONObject
+internal data class RecommendationItem(
+    val id: String,
+    val title: String,
+    val subtitle: String,
+    val price: String,
+    val description: String,
+    val styleTip: String
+)
+
+internal data class HistoryEntry(
+    val createdAt: String,
+    val assetName: String,
+    val frameType: String,
+    val tags: List<String>
+)
+
+internal data class ResultSummary(
+    val landmarkCount: Int,
+    val shoulderToHipRatio: Double,
+    val torsoToLegRatio: Double,
+    val waistToHipRatio: Double,
+    val waistToShoulderRatio: Double,
+    val hipToShoulderRatio: Double,
+    val thighToHipRatio: Double,
+    val shoulderWidthToHeightRatio: Double,
+    val waistWidthToHeightRatio: Double,
+    val hipWidthToHeightRatio: Double,
+    val thighWidthToHeightRatio: Double,
+    val shoulderWidthMask: Double,
+    val waistWidthMask: Double,
+    val hipWidthMask: Double,
+    val thighWidthMask: Double,
+    val shoulderRowMask: Int,
+    val waistRowMask: Int,
+    val hipRowMask: Int,
+    val thighRowMask: Int,
+    val frameType: String,
+    val waistDefinition: String,
+    val shoulderProfile: String,
+    val silhouetteProfile: String,
+    val upperLowerBalance: String,
+    val faceShape: String,
+    val skinUndertone: String,
+    val skinClarity: String,
+    val bodyRatioTags: List<String>,
+    val silhouetteTags: List<String>,
+    val faceTags: List<String>,
+    val toneTags: List<String>,
+    val tags: List<String>
+) {
+    companion object {
+        fun from(rawJson: String, featureJson: String): ResultSummary? {
+            if (rawJson.isBlank() || featureJson.isBlank()) return null
+            return runCatching {
+                val raw = JSONObject(rawJson)
+                val feature = JSONObject(featureJson)
+
+                val pose = raw.optJSONObject("pose")
+                val derived = pose?.optJSONObject("derived_metrics")
+                val silhouette = feature.optJSONObject("silhouette_features")
+                val bodyFrame = feature.optJSONObject("body_frame")
+                val faceFeatures = feature.optJSONObject("face_features")
+                val colorFeatures = feature.optJSONObject("color_features")
+                val tagGroups = feature.optJSONObject("tag_groups")
+
+                ResultSummary(
+                    landmarkCount = pose?.optInt("landmark_count", 0) ?: 0,
+                    shoulderToHipRatio = derived?.optDouble("shoulder_to_hip_ratio", 0.0) ?: 0.0,
+                    torsoToLegRatio = feature.optJSONObject("body_ratio")?.optDouble("torso_to_leg_ratio", 0.0) ?: 0.0,
+                    waistToHipRatio = silhouette?.optDouble("waist_to_hip_ratio", 0.0) ?: 0.0,
+                    waistToShoulderRatio = silhouette?.optDouble("waist_to_shoulder_ratio", 0.0) ?: 0.0,
+                    hipToShoulderRatio = silhouette?.optDouble("hip_to_shoulder_ratio", 0.0) ?: 0.0,
+                    thighToHipRatio = silhouette?.optDouble("thigh_to_hip_ratio", 0.0) ?: 0.0,
+                    shoulderWidthToHeightRatio = silhouette?.optDouble("shoulder_width_to_height_ratio", 0.0) ?: 0.0,
+                    waistWidthToHeightRatio = silhouette?.optDouble("waist_width_to_height_ratio", 0.0) ?: 0.0,
+                    hipWidthToHeightRatio = silhouette?.optDouble("hip_width_to_height_ratio", 0.0) ?: 0.0,
+                    thighWidthToHeightRatio = silhouette?.optDouble("thigh_width_to_height_ratio", 0.0) ?: 0.0,
+                    shoulderWidthMask = silhouette?.optDouble("shoulder_width_mask", 0.0) ?: 0.0,
+                    waistWidthMask = silhouette?.optDouble("waist_width_mask", 0.0) ?: 0.0,
+                    hipWidthMask = silhouette?.optDouble("hip_width_mask", 0.0) ?: 0.0,
+                    thighWidthMask = silhouette?.optDouble("thigh_width_mask", 0.0) ?: 0.0,
+                    shoulderRowMask = silhouette?.optInt("shoulder_row_mask", 0) ?: 0,
+                    waistRowMask = silhouette?.optInt("waist_row_mask", 0) ?: 0,
+                    hipRowMask = silhouette?.optInt("hip_row_mask", 0) ?: 0,
+                    thighRowMask = silhouette?.optInt("thigh_row_mask", 0) ?: 0,
+                    frameType = silhouette?.optString("frame_type", "unknown") ?: "unknown",
+                    waistDefinition = silhouette?.optString("waist_definition", "unknown") ?: "unknown",
+                    shoulderProfile = bodyFrame?.optString("shoulder_profile", "unknown") ?: "unknown",
+                    silhouetteProfile = bodyFrame?.optString("silhouette_profile", "unknown") ?: "unknown",
+                    upperLowerBalance = bodyFrame?.optString("upper_lower_balance", "unknown") ?: "unknown",
+                    faceShape = faceFeatures?.optString("shape", "unknown") ?: "unknown",
+                    skinUndertone = colorFeatures?.optString("undertone", "unknown") ?: "unknown",
+                    skinClarity = colorFeatures?.optString("clarity", "unknown") ?: "unknown",
+                    bodyRatioTags = jsonArrayToList(tagGroups?.optJSONArray("body_ratio_tags")),
+                    silhouetteTags = jsonArrayToList(tagGroups?.optJSONArray("silhouette_tags")),
+                    faceTags = jsonArrayToList(tagGroups?.optJSONArray("face_tags")),
+                    toneTags = jsonArrayToList(tagGroups?.optJSONArray("tone_tags")),
+                    tags = jsonArrayToList(feature.optJSONArray("style_tags"))
+                )
+            }.getOrNull()
+        }
+    }
+}
+
+internal fun jsonArrayToList(array: JSONArray?): List<String> {
+    if (array == null) return emptyList()
+    val items = mutableListOf<String>()
+    for (index in 0 until array.length()) {
+        items += array.optString(index)
+    }
+    return items
+}
+
+internal fun humanizeToken(value: String): String {
+    return value
+        .substringBeforeLast(".")
+        .split("_", "-", " ")
+        .filter { it.isNotBlank() }
+        .joinToString(" ") { token ->
+            token.lowercase().replaceFirstChar { it.uppercase() }
+        }
+}
+
+internal fun assetLabel(assetName: String): String {
+    return when (assetName.substringBeforeLast(".")) {
+        "female_average" -> "여성 평균 체형 샘플"
+        "female_plus" -> "여성 볼륨 체형 샘플"
+        "female_slim" -> "여성 슬림 체형 샘플"
+        "male_average" -> "남성 평균 체형 샘플"
+        "male_slim" -> "남성 슬림 체형 샘플"
+        "male_sturdy" -> "남성 탄탄한 체형 샘플"
+        else -> humanizeToken(assetName)
+    }
+}
+
+internal fun tokenLabel(context: Context, value: String): String {
+    val resId = when (value) {
+        "defined_frame" -> R.string.token_defined_frame
+        "balanced_frame" -> R.string.token_balanced_frame
+        "straight_frame" -> R.string.token_straight_frame
+        "defined" -> R.string.token_defined
+        "moderate" -> R.string.token_moderate
+        "medium" -> R.string.token_medium
+        "soft" -> R.string.token_soft
+        "straight" -> R.string.token_straight
+        "lower_body_emphasized" -> R.string.token_lower_body_emphasized
+        "upper_body_emphasized" -> R.string.token_upper_body_emphasized
+        "balanced" -> R.string.token_balanced
+        "round" -> R.string.token_round
+        "oval" -> R.string.token_oval
+        "heart" -> R.string.token_heart
+        "square" -> R.string.token_square
+        "oblong" -> R.string.token_oblong
+        "warm" -> R.string.token_warm
+        "cool" -> R.string.token_cool
+        "neutral" -> R.string.token_neutral
+        "clear" -> R.string.token_clear
+        "muted" -> R.string.token_muted
+        "light" -> R.string.token_light
+        "deep" -> R.string.token_deep
+        "defined_curve" -> R.string.token_defined_curve
+        "balanced_line" -> R.string.token_balanced_line
+        "straight_line" -> R.string.token_straight_line
+        "upper_body_emphasis" -> R.string.tag_upper_body_emphasis
+        "structured_top_candidate" -> R.string.tag_structured_top_candidate
+        "lower_body_emphasis" -> R.string.tag_lower_body_emphasis
+        "shoulder_expansion_recommended" -> R.string.tag_shoulder_expansion_recommended
+        "balanced_proportion" -> R.string.tag_balanced_proportion
+        "balanced_upper_lower_frame" -> R.string.tag_balanced_upper_lower_frame
+        "long_leg_balance" -> R.string.tag_long_leg_balance
+        "high_waist_friendly" -> R.string.tag_high_waist_friendly
+        "leg_lengthening_recommended" -> R.string.tag_leg_lengthening_recommended
+        "vertical_line_friendly" -> R.string.tag_vertical_line_friendly
+        "balanced_leg_torso_ratio" -> R.string.tag_balanced_leg_torso_ratio
+        "waist_defined" -> R.string.tag_waist_defined
+        "moderate_waist_line" -> R.string.tag_moderate_waist_line
+        "waist_definition_recommended" -> R.string.tag_waist_definition_recommended
+        "soft_waist_curve" -> R.string.tag_soft_waist_curve
+        "straight_waist_line" -> R.string.tag_straight_waist_line
+        "slim_volume" -> R.string.tag_slim_volume
+        "balanced_volume" -> R.string.tag_balanced_volume
+        "full_volume" -> R.string.tag_full_volume
+        "relaxed_fit_friendly" -> R.string.tag_relaxed_fit_friendly
+        "defined_silhouette" -> R.string.tag_defined_silhouette
+        "clean_line_friendly" -> R.string.tag_clean_line_friendly
+        "balanced_silhouette" -> R.string.tag_balanced_silhouette
+        "straight_body_line" -> R.string.tag_straight_body_line
+        "soft_face_shape" -> R.string.tag_soft_face_shape
+        "angular_face_shape" -> R.string.tag_angular_face_shape
+        "length_emphasized_face" -> R.string.tag_length_emphasized_face
+        "face_shape_round" -> R.string.tag_face_shape_round
+        "face_shape_oval" -> R.string.tag_face_shape_oval
+        "face_shape_heart" -> R.string.tag_face_shape_heart
+        "face_shape_square" -> R.string.tag_face_shape_square
+        "face_shape_oblong" -> R.string.tag_face_shape_oblong
+        "soft_width_emphasized" -> R.string.tag_soft_width_emphasized
+        "structured_width_emphasized" -> R.string.tag_structured_width_emphasized
+        "length_emphasized" -> R.string.tag_length_emphasized
+        "warm_tone" -> R.string.tag_warm_tone
+        "cool_tone" -> R.string.tag_cool_tone
+        "neutral_tone" -> R.string.tag_neutral_tone
+        "clear_clarity" -> R.string.tag_clear_clarity
+        "muted_clarity" -> R.string.tag_muted_clarity
+        "balanced_clarity" -> R.string.tag_balanced_clarity
+        "light_brightness" -> R.string.tag_light_brightness
+        "medium_brightness" -> R.string.tag_medium_brightness
+        "deep_brightness" -> R.string.tag_deep_brightness
+        "cool_clear_palette" -> R.string.tag_cool_clear_palette
+        "warm_soft_palette" -> R.string.tag_warm_soft_palette
+        "neutral_palette_flexible" -> R.string.tag_neutral_palette_flexible
+        else -> null
+    }
+    return resId?.let(context::getString) ?: humanizeToken(value)
+}
+
+internal fun Double.format(digits: Int): String {
+    return java.lang.String.format(Locale.US, "%.${digits}f", this)
+}
+
+internal data class PipelineUiState(
+    val steps: List<PipelineStep> = PoseExtractionPipeline.initialSteps(),
+    val completedSteps: Set<String> = emptySet(),
+    val selectedAsset: String = PoseExtractionPipeline.sampleAssets.first(),
+    val isRunning: Boolean = false,
+    val statusMessage: String = "분석 준비 완료",
+    val jsonOutput: String = "",
+    val featureJsonOutput: String = "",
+    val outputFilePath: String = "",
+    val sampleBitmap: Bitmap? = null
+) {
+
+    fun beginRun(): PipelineUiState {
+        return copy(
+            isRunning = true,
+            statusMessage = "분석을 시작했어요",
+            jsonOutput = "",
+            featureJsonOutput = "",
+            outputFilePath = "",
+            completedSteps = emptySet(),
+            steps = steps.map { it.copy(status = StepStatus.PENDING) }
+        )
+    }
+
+    fun updateStepStatus(stepId: String, status: StepStatus): PipelineUiState {
+        if (steps.none { it.id == stepId }) return this
+        val updatedCompleted = when (status) {
+            StepStatus.COMPLETED -> completedSteps + stepId
+            else -> completedSteps
+        }
+        return copy(
+            isRunning = true,
+            statusMessage = when (status) {
+                StepStatus.PENDING -> "${stepTitle(stepId)} 대기 중"
+                StepStatus.RUNNING -> "${stepTitle(stepId)} 진행 중"
+                StepStatus.COMPLETED -> "${stepTitle(stepId)} 완료됨"
+            },
+            completedSteps = updatedCompleted,
+            steps = steps.map { step ->
+                when (step.id) {
+                    stepId -> step.copy(status = status)
+                    else -> {
+                        if (step.id in updatedCompleted) {
+                            step.copy(status = StepStatus.COMPLETED)
+                        } else {
+                            step.copy(status = StepStatus.PENDING)
+                        }
+                    }
+                }
+            }
+        )
+    }
+
+    fun startStep(stepId: String): PipelineUiState {
+        return copy(
+            isRunning = true,
+            statusMessage = "${stepTitle(stepId)} 실행 중",
+            steps = steps.map { step ->
+                when (step.id) {
+                    stepId -> step.copy(status = StepStatus.RUNNING)
+                    else -> {
+                        if (step.id in completedSteps) {
+                            step.copy(status = StepStatus.COMPLETED)
+                        } else {
+                            step.copy(status = StepStatus.PENDING)
+                        }
+                    }
+                }
+            }
+        )
+    }
+
+    fun completeStep(result: ExtractionResult): PipelineUiState {
+        val updatedCompleted = completedSteps + result.completedStepIds
+        return copy(
+            isRunning = false,
+            statusMessage = "${result.step.title} 완료",
+            jsonOutput = result.jsonOutput,
+            featureJsonOutput = result.featureJsonOutput,
+            outputFilePath = result.outputFilePath,
+            completedSteps = updatedCompleted,
+            steps = steps.map { step ->
+                if (step.id == result.step.id || step.id in updatedCompleted) {
+                    step.copy(status = StepStatus.COMPLETED)
+                } else {
+                    step.copy(status = StepStatus.PENDING)
+                }
+            }
+        )
+    }
+
+    fun failStep(stepId: String, error: Throwable): PipelineUiState {
+        val errorText = buildString {
+            append("ERROR: ")
+            append(error::class.qualifiedName ?: error::class.simpleName ?: "UnknownError")
+            val message = error.message
+            if (!message.isNullOrBlank()) {
+                append("\n")
+                append(message)
+            }
+            append("\n\n")
+            append(error.stackTraceToString())
+        }
+        return copy(
+            isRunning = false,
+            statusMessage = "${stepTitle(stepId)} 실패",
+            jsonOutput = errorText,
+            featureJsonOutput = errorText,
+            steps = steps.map { step ->
+                if (step.id in completedSteps) {
+                    step.copy(status = StepStatus.COMPLETED)
+                } else {
+                    step.copy(status = StepStatus.PENDING)
+                }
+            }
+        )
+    }
+
+    private fun stepTitle(stepId: String): String {
+        return steps.firstOrNull { it.id == stepId }?.title ?: stepId
+    }
+}
+
+
