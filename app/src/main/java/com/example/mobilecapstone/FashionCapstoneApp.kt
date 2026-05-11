@@ -260,12 +260,17 @@ internal fun FashionCapstoneApp() {
                                 authMessage = response.message
 
                                 if (response.success) {
-                                    loginEmail = signupEmail.trim()
+                                    loginEmail = ""
                                     loginPassword = ""
 
+                                    signupUsername = ""
+                                    signupEmail = ""
                                     signupPassword = ""
                                     signupPasswordConfirm = ""
+                                    signupHeight = ""
+                                    signupWeight = ""
 
+                                    authMessage = null
                                     currentScreen = AppScreen.Login
                                 }
                             },
