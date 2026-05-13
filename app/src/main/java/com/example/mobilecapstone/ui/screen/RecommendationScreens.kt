@@ -74,127 +74,146 @@ internal fun RecommendationListScreen(
     colourOptions: List<String>,
     tagPreferenceWeights: Map<String, Double>,
     onFiltersChange: (RecommendationFilterState) -> Unit,
-    onSearch: () -> Unit,
     onSelect: (RecommendationItem) -> Unit,
+    onOpenHistory: () -> Unit,
     onGoAnalysis: () -> Unit
 ) {
     val context = LocalContext.current
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 14.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        ScreenHeroCard(
-            icon = { Icon(Icons.Rounded.Checkroom, contentDescription = null) },
-            title = "추천 목록 화면",
-            description = "백엔드 추천 API가 들어오면 이 화면의 더미 카드만 실제 데이터 카드로 바꾸면 돼."
-        )
-
-        if (summary == null) {
-            PlaceholderFeatureCard(
-                icon = { Icon(Icons.Rounded.Tune, contentDescription = null) },
-                title = "분석 결과가 필요해",
-                description = "추천 목록을 보기 전에 분석 결과 화면에서 분석을 한 번 실행해."
-            )
-            FilledTonalButton(
-                onClick = onGoAnalysis,
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(18.dp)
-            ) {
-                Text("분석 화면으로 이동")
-            }
-        } else {
-            RecommendationFilterCard(
-                filters = filters,
-                resultCount = recommendations.size,
-                colourOptions = colourOptions,
-                onFiltersChange = onFiltersChange,
-                onSearch = onSearch
+    Box(modifier = modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 14.dp)
+                .padding(bottom = if (summary == null) 0.dp else 88.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            ScreenHeroCard(
+                icon = { Icon(Icons.Rounded.Checkroom, contentDescription = null) },
+                title = "추천 목록 화면",
+                description = "분석 태그와 검색 조건을 바탕으로 사용자에게 맞는 추천 상품을 확인합니다."
             )
 
-            if (recommendations.isEmpty()) {
+            if (summary == null) {
                 PlaceholderFeatureCard(
                     icon = { Icon(Icons.Rounded.Tune, contentDescription = null) },
-                    title = "조건에 맞는 상품이 없어",
-                    description = "가격 범위, 계절, 성별 조건을 조금 넓혀서 다시 검색해봐."
+                    title = "분석 결과가 필요합니다",
+                    description = "추천 상품을 확인하려면 먼저 사진 분석을 실행해 주세요."
                 )
-            }
-
-            recommendations.forEach { item ->
-                ElevatedCard(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onSelect(item) },
-                    shape = RoundedCornerShape(26.dp),
-                    colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)
+                FilledTonalButton(
+                    onClick = onGoAnalysis,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp)
                 ) {
-                    Column(
-                        modifier = Modifier.padding(18.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    Text("분석 화면으로 이동")
+                }
+            } else {
+                RecommendationFilterCard(
+                    filters = filters,
+                    resultCount = recommendations.size,
+                    colourOptions = colourOptions,
+                    onFiltersChange = onFiltersChange
+                )
+
+                if (recommendations.isEmpty()) {
+                    PlaceholderFeatureCard(
+                        icon = { Icon(Icons.Rounded.Tune, contentDescription = null) },
+                        title = "조건에 맞는 상품이 없습니다",
+                        description = "가격 범위, 계절, 성별 조건을 넓혀 다시 조회해 주세요."
+                    )
+                }
+
+                recommendations.forEach { item ->
+                    ElevatedCard(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSelect(item) },
+                        shape = RoundedCornerShape(26.dp),
+                        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.Top
+                        Column(
+                            modifier = Modifier.padding(18.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Column(
-                                modifier = Modifier.weight(1f),
-                                verticalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Text(
-                                    text = item.title,
-                                    style = MaterialTheme.typography.titleLarge
-                                )
-                                Text(
-                                    text = item.subtitle,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            SoftPill(text = item.price)
-                        }
-                        Text(
-                            text = item.description,
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                        Text(
-                            text = item.styleTip,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Row(
-                            modifier = Modifier.horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            SoftPill(text = item.brandName)
-                            SoftPill(text = item.productType)
-                            SoftPill(text = item.season)
-                            SoftPill(text = item.gender)
-                            SoftPill(text = item.baseColour)
-                            SoftPill(text = item.usage)
-                            SoftPill(text = item.fit)
-                            item.userRating?.let { userRating ->
-                                SoftPill(text = "내 별점 ${userRating}점")
-                            }
-                            if (item.totalDwellTimeMs > 0L) {
-                                SoftPill(text = "체류 ${item.totalDwellTimeMs / 1000}s")
-                            }
-                        }
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            OutlinedButton(
-                                onClick = { onSelect(item) },
+                            Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(16.dp)
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.Top
                             ) {
-                                Text("상세보기")
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text(
+                                        text = item.title,
+                                        style = MaterialTheme.typography.titleLarge
+                                    )
+                                    Text(
+                                        text = item.subtitle,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                SoftPill(text = item.price)
+                            }
+                            Text(
+                                text = item.description,
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Text(
+                                text = item.styleTip,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Row(
+                                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                SoftPill(text = item.brandName)
+                                SoftPill(text = item.productType)
+                                SoftPill(text = item.season)
+                                SoftPill(text = item.gender)
+                                SoftPill(text = item.baseColour)
+                                SoftPill(text = item.usage)
+                                SoftPill(text = item.fit)
+                                item.userRating?.let { userRating ->
+                                    SoftPill(text = "내 별점 ${userRating}점")
+                                }
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = { onSelect(item) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(16.dp)
+                                ) {
+                                    Text("상세보기")
+                                }
                             }
                         }
                     }
+                }
+            }
+        }
+
+        if (summary != null) {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth(),
+                color = MaterialTheme.colorScheme.background
+            ) {
+                FilledTonalButton(
+                    onClick = onOpenHistory,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 14.dp)
+                        .height(54.dp),
+                    shape = RoundedCornerShape(18.dp)
+                ) {
+                    Text("기록 화면에서 추천 세트 확인")
                 }
             }
         }
@@ -206,9 +225,14 @@ private fun RecommendationFilterCard(
     filters: RecommendationFilterState,
     resultCount: Int,
     colourOptions: List<String>,
-    onFiltersChange: (RecommendationFilterState) -> Unit,
-    onSearch: () -> Unit
+    onFiltersChange: (RecommendationFilterState) -> Unit
 ) {
+    var pendingPriceRange by remember(filters.minPrice, filters.maxPrice) {
+        mutableStateOf(filters.minPrice.toFloat()..filters.maxPrice.toFloat())
+    }
+    val pendingMinPrice = pendingPriceRange.start.toInt().roundPriceStep()
+    val pendingMaxPrice = pendingPriceRange.endInclusive.toInt().roundPriceStep()
+
     ElevatedCard(
         shape = RoundedCornerShape(26.dp),
         colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)
@@ -223,33 +247,39 @@ private fun RecommendationFilterCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("상품 검색 필터", style = MaterialTheme.typography.titleLarge)
+                    Text("추천 필터", style = MaterialTheme.typography.titleLarge)
                     Text(
-                        text = "서버 DB 필드 기준 검색 조건",
+                        text = "가격, 계절, 색상 등 원하는 조건을 선택해 주세요.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                SoftPill(text = "${resultCount}개")
             }
+            Text(
+                text = "현재 조건에 맞는 추천 상품 ${resultCount}개",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary
+            )
 
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
-                    text = "가격대: ${filters.minPrice.formatWon()} ~ ${filters.maxPrice.formatWon()}",
+                    text = "가격대 ${pendingMinPrice.formatWon()} - ${pendingMaxPrice.formatWon()}",
                     style = MaterialTheme.typography.titleMedium
                 )
                 RangeSlider(
-                    value = filters.minPrice.toFloat()..filters.maxPrice.toFloat(),
+                    value = pendingPriceRange,
                     onValueChange = { value ->
+                        pendingPriceRange = value
+                    },
+                    onValueChangeFinished = {
                         onFiltersChange(
                             filters.copy(
-                                minPrice = value.start.toInt(),
-                                maxPrice = value.endInclusive.toInt()
+                                minPrice = pendingMinPrice.coerceAtMost(pendingMaxPrice),
+                                maxPrice = pendingMaxPrice.coerceAtLeast(pendingMinPrice)
                             )
                         )
                     },
-                    valueRange = 0f..500_000f,
-                    steps = 9
+                    valueRange = 0f..500_000f
                 )
             }
 
@@ -316,13 +346,6 @@ private fun RecommendationFilterCard(
                 Text("할인 상품만", modifier = Modifier.weight(1f))
             }
 
-            Button(
-                onClick = onSearch,
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(18.dp)
-            ) {
-                Text("Mock 서버 검색 결과 저장")
-            }
         }
     }
 }
@@ -355,6 +378,10 @@ private fun Int.formatWon(): String {
     return "%,d원".format(this)
 }
 
+private fun Int.roundPriceStep(): Int {
+    return ((this + 500) / 1_000 * 1_000).coerceIn(0, 500_000)
+}
+
 @Composable
 internal fun RecommendationDetailScreen(
     modifier: Modifier = Modifier,
@@ -384,8 +411,8 @@ internal fun RecommendationDetailScreen(
         if (item == null) {
             PlaceholderFeatureCard(
                 icon = { Icon(Icons.Rounded.Checkroom, contentDescription = null) },
-                title = "선택된 추천이 없어",
-                description = "추천 목록 화면에서 카드 하나를 눌러 상세 화면으로 들어와."
+                title = "선택된 추천 상품이 없습니다",
+                description = "추천 목록 화면에서 상품을 선택해 상세 정보를 확인해 주세요."
             )
             OutlinedButton(
                 onClick = onBackToList,
@@ -414,9 +441,6 @@ internal fun RecommendationDetailScreen(
                 )
                 SoftPill(text = item.price)
                 item.userRating?.let { SoftPill(text = "내 별점 ${it}점") }
-                if (item.totalDwellTimeMs > 0L) {
-                    SoftPill(text = "누적 체류 ${item.totalDwellTimeMs / 1000}s")
-                }
             }
         }
 

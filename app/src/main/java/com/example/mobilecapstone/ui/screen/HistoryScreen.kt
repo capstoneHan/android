@@ -84,7 +84,7 @@ internal fun HistoryScreen(
         ScreenHeroCard(
             icon = { Icon(Icons.Rounded.History, contentDescription = null) },
             title = "기록 화면",
-            description = "로컬 분석 기록과 서버 추천 기록을 기록 ID로 매핑해서 확인할 수 있어요."
+            description = "이전 분석 기록과 추천 상품, 개인화 피드백을 한곳에서 확인합니다."
         )
 
         if (historyEntries.isEmpty()) {
@@ -187,11 +187,6 @@ internal fun HistoryScreen(
                                                 append(" · 내 별점 ")
                                                 append(rating)
                                                 append("점")
-                                            }
-                                            if (recommendation.totalDwellTimeMs > 0L) {
-                                                append(" · 체류 ")
-                                                append(recommendation.totalDwellTimeMs / 1000)
-                                                append("s")
                                             }
                                         },
                                         modifier = Modifier.weight(1f),

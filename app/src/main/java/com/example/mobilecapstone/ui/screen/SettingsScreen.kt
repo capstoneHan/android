@@ -83,7 +83,7 @@ internal fun SettingsScreen(
         ScreenHeroCard(
             icon = { Icon(Icons.Rounded.Settings, contentDescription = null) },
             title = "설정 화면",
-            description = "동기화, 알림, 계정 관련 껍데기를 미리 잡아두면 백엔드 붙일 때 빨라져."
+            description = "계정 정보, 알림 설정, 개인 분석 정보를 관리합니다."
         )
 
         ElevatedCard(
@@ -158,7 +158,7 @@ internal fun ProfileEditScreen(
         ScreenHeroCard(
             icon = { Icon(Icons.Rounded.Settings, contentDescription = null) },
             title = "내 정보 수정",
-            description = "추천 분석에 사용할 신체 정보를 확인하고 변경할 수 있어."
+            description = "추천 분석에 사용할 신체 정보를 확인하고 변경합니다."
         )
 
         ElevatedCard(

@@ -691,7 +691,7 @@ object PoseExtractionPipeline {
             .count { it >= 0.35f }
 
         if (pose.allPoseLandmarks.size < 12 || shoulderConfidence < 0.35f || hipConfidence < 0.35f || visibleBodyScore < 3) {
-            throw AnalysisInputException("사람의 전신을 충분히 인식하지 못했어. 머리부터 발까지 보이는 사진으로 다시 촬영하거나 선택해줘.")
+            throw AnalysisInputException("사람의 전신을 충분히 인식하지 못했습니다. 머리부터 발까지 보이는 사진으로 다시 촬영하거나 선택해 주세요.")
         }
     }
 
@@ -703,7 +703,7 @@ object PoseExtractionPipeline {
         val coverage = silhouetteJson.optDouble("coverage_ratio", 0.0)
 
         if (bodyHeight <= 0.0 || coverage < 0.01 || shoulderWidth <= 0.0 || hipWidth <= 0.0 || thighWidth <= 0.0) {
-            throw AnalysisInputException("사람 실루엣 값이 거의 잡히지 않았어. 배경과 사람이 분리되고 전신이 보이는 사진으로 다시 선택해줘.")
+            throw AnalysisInputException("사람 실루엣 값을 충분히 추출하지 못했습니다. 배경과 사람이 분리되고 전신이 보이는 사진으로 다시 선택해 주세요.")
         }
     }
 

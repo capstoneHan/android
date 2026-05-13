@@ -10,15 +10,15 @@ internal fun buildRecommendationMocks(
     if (summary == null) return emptyList()
 
     val shoulderHint = when (summary.shoulderProfile) {
-        "broad_relative_to_hip" -> "상체 볼륨이 또렷해서 허리 라인을 살려주는 실루엣이 잘 어울려."
-        "narrow_relative_to_hip" -> "상체 비율을 보완할 수 있게 어깨 포인트가 있는 아이템이 좋아."
-        else -> "전체 밸런스가 좋아서 미니멀한 정석 실루엣이 잘 맞아."
+        "broad_relative_to_hip" -> "상체 비율을 정돈할 수 있는 깔끔한 실루엣의 상품입니다."
+        "narrow_relative_to_hip" -> "어깨선을 자연스럽게 보완할 수 있는 구조적인 상품입니다."
+        else -> "전체적인 균형을 유지하기 좋은 미니멀한 스타일의 상품입니다."
     }
 
     val legHint = when (summary.upperLowerBalance) {
-        "lower_body_emphasized" -> "하체 비율이 자연스럽게 살아나도록 스트레이트 팬츠와 짧은 상의를 추천해."
-        "upper_body_emphasized" -> "상체 비율이 길어 보일 때는 하이웨이스트와 세로 라인 디테일이 균형 보정에 유리해."
-        else -> "과한 보정보다 전체 선을 정리하는 쪽이 좋아."
+        "lower_body_emphasized" -> "하체 비율을 자연스럽게 정돈할 수 있는 여유 있는 핏을 추천합니다."
+        "upper_body_emphasized" -> "하이웨이스트 또는 세로 라인 디테일로 균형을 보완할 수 있습니다."
+        else -> "과한 보정보다는 전체 라인을 정돈하는 스타일을 추천합니다."
     }
 
     return mockProductCatalog(context, summary, shoulderHint, legHint).filter { item ->
@@ -59,8 +59,8 @@ private fun mockProductCatalog(
             imageUrl = "http://assets.myntassets.com/h_480,q_95,w_360/v1/images/style/properties/Nike-Sahara-Team-India-Fanwear-Round-Neck-Jersey_2d27392cc7d7730e8fee0755fd41d30c_images.jpg",
             matchedTags = (summary.tags.take(2) + listOf("sports_style", "regular_fit_friendly")).distinct(),
             matchScore = 0.87,
-            description = "$shoulderHint 서버 DB의 price, season, gender, colour, usage 필드를 매핑한 스포츠웨어 예시야.",
-            styleTip = "분석 태그와 필터 조건을 백엔드로 보내면 이런 상품 카드로 내려받는 구조가 돼."
+            description = "$shoulderHint 분석 태그와 상품 메타데이터가 함께 매칭된 스포츠웨어입니다.",
+            styleTip = "활동성이 필요한 상황에서 편하게 착용할 수 있는 추천 상품입니다."
         ),
         RecommendationItem(
             id = "local-1",
@@ -79,8 +79,8 @@ private fun mockProductCatalog(
             fit = "Slim Fit",
             matchedTags = (summary.tags.take(3) + listOf("structured_top_candidate")).distinct(),
             matchScore = 0.82,
-            description = "$shoulderHint 상체선이 정리되는 부드러운 라벤더 컬러 자켓이야.",
-            styleTip = "화이트 이너와 매치하면 앱 전체 톤과도 잘 맞고 데모 화면에서도 보기 좋아."
+            description = "$shoulderHint 상체 라인을 정돈해 주는 부드러운 컬러의 재킷입니다.",
+            styleTip = "데님 또는 슬랙스와 함께 매치하면 깔끔한 데일리 스타일을 연출할 수 있습니다."
         ),
         RecommendationItem(
             id = "local-2",
@@ -99,8 +99,8 @@ private fun mockProductCatalog(
             fit = "Regular Fit",
             matchedTags = (summary.tags.takeLast(3) + listOf("relaxed_fit_friendly", "leg_lengthening_recommended")).distinct(),
             matchScore = 0.79,
-            description = "$legHint 허리선과 다리선을 깨끗하게 정리해주는 기본 팬츠야.",
-            styleTip = "촬영 데모용 화면에서도 실루엣 설명이 쉬운 클래식 아이템이야."
+            description = "$legHint 허리선과 다리 라인을 깔끔하게 정리해 주는 기본 팬츠입니다.",
+            styleTip = "다양한 상의와 조합하기 쉬워 반복 착용에 적합한 아이템입니다."
         ),
         RecommendationItem(
             id = "local-3",
@@ -119,8 +119,8 @@ private fun mockProductCatalog(
             fit = "Comfort Fit",
             matchedTags = (summary.tags + listOf("comfort_fit_friendly")).distinct().take(5),
             matchScore = 0.74,
-            description = "현재 프레임 타입 ${tokenLabel(context, summary.frameType)} 기준으로 과하지 않게 체형 밸런스를 맞춰줘.",
-            styleTip = "백엔드 추천 API가 붙기 전까지는 이 카드 구조를 그대로 재사용하면 돼."
+            description = "현재 프레임 타입 ${tokenLabel(context, summary.frameType)} 기준으로 체형 밸런스를 자연스럽게 맞춰 주는 상품입니다.",
+            styleTip = "부드러운 니트 소재와 여유 있는 핏으로 편안한 스타일을 구성할 수 있습니다."
         )
     )
 }

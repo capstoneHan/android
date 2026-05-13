@@ -89,13 +89,13 @@ internal fun HomeScreen(
                 modifier = Modifier.padding(22.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                SoftPill(text = "환영해, ${tokenLabel(context, accountName)}")
+                SoftPill(text = "${tokenLabel(context, accountName)}님")
                 Text(
-                    text = "오늘의 스타일 분석을 시작해볼까?",
+                    text = "맞춤 스타일 분석을 시작해 보세요",
                     style = MaterialTheme.typography.headlineLarge
                 )
                 Text(
-                    text = "현재 테스트 입력은 ${selectedAsset.substringBeforeLast(".")} 샘플로 설정되어 있어.",
+                    text = "현재 ${selectedAsset.substringBeforeLast(".")} 샘플 이미지가 선택되어 있습니다.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -146,28 +146,28 @@ internal fun HomeScreen(
         QuickActionCard(
             icon = { Icon(Icons.Rounded.CameraAlt, contentDescription = null) },
             title = "촬영 화면",
-            description = "카메라 연결 전 단계지만 샘플 선택과 촬영 흐름을 미리 점검할 수 있어.",
+            description = "전신 사진을 촬영하거나 갤러리에서 선택해 분석을 준비합니다.",
             buttonLabel = "촬영 화면 열기",
             onClick = onStartCapture
         )
         QuickActionCard(
             icon = { Icon(Icons.Rounded.Insights, contentDescription = null) },
             title = "분석 결과 화면",
-            description = "현재 구현된 분석 기능과 JSON 결과를 앱 화면에서 확인할 수 있어.",
+            description = "체형 비율, 얼굴형, 컬러 톤과 추천 태그를 확인합니다.",
             buttonLabel = "분석 화면 열기",
             onClick = onOpenAnalysis
         )
         QuickActionCard(
             icon = { Icon(Icons.Rounded.Checkroom, contentDescription = null) },
             title = "추천 목록 화면",
-            description = "백엔드 연결 전까지는 더미 추천 카드로 전체 플로우를 검증할 수 있어.",
+            description = "분석 결과와 필터 조건을 기반으로 추천 상품을 확인합니다.",
             buttonLabel = "추천 목록 보기",
             onClick = onOpenRecommendations
         )
         QuickActionCard(
             icon = { Icon(Icons.Rounded.History, contentDescription = null) },
             title = "기록 화면",
-            description = "세션 중 실행한 분석 결과를 리스트 형태로 쌓아보는 껍데기 화면이야.",
+            description = "이전 분석 결과와 추천 상품, 개인화 피드백을 확인합니다.",
             buttonLabel = "기록 보기",
             onClick = onOpenHistory
         )

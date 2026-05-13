@@ -332,7 +332,7 @@ internal data class PipelineUiState(
     fun beginRun(): PipelineUiState {
         return copy(
             isRunning = true,
-            statusMessage = "분석을 시작했어요",
+            statusMessage = "분석을 시작합니다.",
             jsonOutput = "",
             featureJsonOutput = "",
             outputFilePath = "",
@@ -409,7 +409,7 @@ internal data class PipelineUiState(
     }
 
     fun failStep(stepId: String, error: Throwable): PipelineUiState {
-        val userMessage = error.message?.takeIf { it.isNotBlank() } ?: "분석에 실패했어. 사진을 다시 선택해줘."
+        val userMessage = error.message?.takeIf { it.isNotBlank() } ?: "분석에 실패했습니다. 사진을 다시 선택해 주세요."
         val errorText = if (error is AnalysisInputException) {
             userMessage
         } else {

@@ -8,52 +8,52 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
 private val LightColorScheme = lightColorScheme(
-    primary = LavenderPrimary,
+    primary = AppPrimary,
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFE9E3FF),
-    onPrimaryContainer = Color(0xFF21145A),
+    primaryContainer = Color(0xFFE8F2FF),
+    onPrimaryContainer = Color(0xFF082C55),
 
-    secondary = LavenderSecondary,
+    secondary = AppSecondary,
     onSecondary = Color.White,
-    secondaryContainer = Color(0xFFF1ECFF),
-    onSecondaryContainer = Color(0xFF2E235F),
+    secondaryContainer = Color(0xFFE7F8EC),
+    onSecondaryContainer = Color(0xFF123A1E),
 
-    tertiary = LavenderTertiary,
+    tertiary = AppTertiary,
     onTertiary = Color.White,
-    tertiaryContainer = Color(0xFFF4EFFF),
-    onTertiaryContainer = Color(0xFF331B62),
+    tertiaryContainer = Color(0xFFEFF1FF),
+    onTertiaryContainer = Color(0xFF202765),
 
     background = WhiteBackground,
-    onBackground = Color(0xFF1B1630),
+    onBackground = Color(0xFF111827),
     surface = WhiteSurface,
-    onSurface = Color(0xFF1B1630),
+    onSurface = Color(0xFF111827),
     surfaceVariant = WhiteSurfaceVariant,
-    onSurfaceVariant = Color(0xFF625B7B),
+    onSurfaceVariant = Color(0xFF5F6B7A),
     outline = WhiteOutline
 )
 
 private val DarkColorScheme = darkColorScheme(
-    primary = LavenderPrimaryDark,
-    onPrimary = Color(0xFF2C1E74),
-    primaryContainer = Color(0xFF3E3190),
-    onPrimaryContainer = Color(0xFFF1EDFF),
+    primary = AppPrimaryDark,
+    onPrimary = Color(0xFF06203F),
+    primaryContainer = Color(0xFF143B61),
+    onPrimaryContainer = Color(0xFFE8F2FF),
 
-    secondary = LavenderSecondaryDark,
-    onSecondary = Color(0xFF34266D),
-    secondaryContainer = Color(0xFF4A3B87),
-    onSecondaryContainer = Color(0xFFF1EDFF),
+    secondary = AppSecondaryDark,
+    onSecondary = Color(0xFF0D2E18),
+    secondaryContainer = Color(0xFF1F4C2B),
+    onSecondaryContainer = Color(0xFFE7F8EC),
 
-    tertiary = LavenderTertiaryDark,
-    onTertiary = Color(0xFF39226B),
-    tertiaryContainer = Color(0xFF51378B),
-    onTertiaryContainer = Color(0xFFF3EEFF),
+    tertiary = AppTertiaryDark,
+    onTertiary = Color(0xFF1E2458),
+    tertiaryContainer = Color(0xFF333B85),
+    onTertiaryContainer = Color(0xFFEFF1FF),
 
     background = DarkBackground,
-    onBackground = Color(0xFFE8E2FF),
+    onBackground = Color(0xFFE8EDF5),
     surface = DarkSurface,
-    onSurface = Color(0xFFE8E2FF),
+    onSurface = Color(0xFFE8EDF5),
     surfaceVariant = DarkSurfaceVariant,
-    onSurfaceVariant = Color(0xFFCAC3E3),
+    onSurfaceVariant = Color(0xFFB7C0CC),
     outline = DarkOutline
 )
 

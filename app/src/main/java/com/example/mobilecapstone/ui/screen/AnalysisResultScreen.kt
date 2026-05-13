@@ -25,14 +25,11 @@ import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.Checkroom
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Insights
-import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.Login
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
@@ -46,10 +43,6 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -64,13 +57,10 @@ internal fun AnalysisResultScreen(
     modifier: Modifier = Modifier,
     uiState: PipelineUiState,
     summary: ResultSummary?,
-    sampleOptions: List<String>,
-    onSelectAsset: (String) -> Unit,
     onRun: () -> Unit,
     onOpenRecommendations: () -> Unit
 ) {
     val context = LocalContext.current
-    var showAssetMenu by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier
@@ -82,7 +72,7 @@ internal fun AnalysisResultScreen(
         ScreenHeroCard(
             icon = { Icon(Icons.Rounded.Insights, contentDescription = null) },
             title = "분석 결과 화면",
-            description = "현재 프로젝트의 실제 분석 기능을 그대로 유지하면서 앱다운 화면으로 정리했어."
+            description = "사진에서 추출한 체형, 얼굴형, 컬러 톤 정보를 기반으로 추천 태그를 확인합니다."
         )
 
         uiState.sampleBitmap?.let { bitmap ->
@@ -94,45 +84,13 @@ internal fun AnalysisResultScreen(
                     modifier = Modifier.padding(18.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text("선택된 이미지", style = MaterialTheme.typography.titleLarge)
-                            Text(
-                                text = uiState.selectedImageLabel,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Box {
-                            OutlinedButton(
-                                onClick = { showAssetMenu = true },
-                                shape = RoundedCornerShape(14.dp)
-                            ) {
-                                Text("샘플 선택")
-                                Icon(
-                                    imageVector = Icons.Rounded.KeyboardArrowDown,
-                                    contentDescription = null
-                                )
-                            }
-                            DropdownMenu(
-                                expanded = showAssetMenu,
-                                onDismissRequest = { showAssetMenu = false }
-                            ) {
-                                sampleOptions.forEach { asset ->
-                                    DropdownMenuItem(
-                                        text = { Text(assetLabel(asset)) },
-                                        onClick = {
-                                            showAssetMenu = false
-                                            onSelectAsset(asset)
-                                        }
-                                    )
-                                }
-                            }
-                        }
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("선택된 이미지", style = MaterialTheme.typography.titleLarge)
+                        Text(
+                            text = uiState.selectedImageLabel,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                     Image(
                         bitmap = bitmap.asImageBitmap(),
@@ -236,7 +194,7 @@ internal fun AnalysisResultScreen(
 
                 if (summary == null) {
                     Text(
-                        text = "아직 분석 결과가 없어. 위 버튼을 눌러 먼저 분석을 실행해.",
+                        text = "아직 분석 결과가 없습니다. 위 버튼을 눌러 분석을 먼저 실행해 주세요.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -313,16 +271,15 @@ internal fun AnalysisResultScreen(
                         )
                     }
 
-                    MetricJsonBlock(
-                        summary = summary
-                    )
-
-                    FilledTonalButton(
+                    Button(
                         onClick = onOpenRecommendations,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(54.dp),
                         shape = RoundedCornerShape(18.dp)
                     ) {
-                        Text("추천 목록 화면으로 이동")
+                        Icon(Icons.Rounded.Checkroom, contentDescription = null)
+                        Text("추천 상품 확인하기")
                     }
                 }
             }

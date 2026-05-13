@@ -67,8 +67,6 @@ internal fun CaptureScreen(
     selectedAsset: String,
     selectedImageLabel: String,
     sampleBitmap: Bitmap?,
-    sampleOptions: List<String>,
-    onSelect: (String) -> Unit,
     onTakePhoto: () -> Unit,
     onPickFromGallery: () -> Unit,
     onGoAnalysis: () -> Unit
@@ -85,7 +83,7 @@ internal fun CaptureScreen(
         ScreenHeroCard(
             icon = { Icon(Icons.Rounded.CameraAlt, contentDescription = null) },
             title = "촬영 화면",
-            description = "카메라로 전신 사진을 촬영하거나 갤러리에서 이미지를 선택해서 분석할 수 있어."
+            description = "전신 사진을 촬영하거나 갤러리에서 선택해 분석을 준비합니다."
         )
 
         ElevatedCard(
@@ -158,54 +156,15 @@ internal fun CaptureScreen(
             }
         }
 
-        ElevatedCard(
-            shape = RoundedCornerShape(26.dp),
-            colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)
-        ) {
-            Column(
-                modifier = Modifier.padding(18.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Text(
-                    text = "테스트 입력 선택",
-                    style = MaterialTheme.typography.titleLarge
-                )
-                Text(
-                    text = "현재 선택: ${selectedAsset.substringBeforeLast(".")}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Row(
-                    modifier = Modifier.horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    sampleOptions.forEach { asset ->
-                        ChipButton(
-                            label = asset.substringBeforeLast("."),
-                            selected = asset == selectedAsset,
-                            onClick = { onSelect(asset) }
-                        )
-                    }
-                }
-                FilledTonalButton(
-                    onClick = onGoAnalysis,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(18.dp)
-                ) {
-                    Text("선택한 샘플로 분석 화면 이동")
-                }
-            }
-        }
-
         PlaceholderFeatureCard(
             icon = { Icon(Icons.Rounded.CameraAlt, contentDescription = null) },
-            title = "촬영 가이드 예정",
-            description = "전신이 화면 안에 들어오도록 안내하는 오버레이와 품질 체크 영역을 넣을 자리야."
+            title = "촬영 가이드",
+            description = "정확한 분석을 위해 전신이 화면 안에 들어오도록 촬영해 주세요."
         )
         PlaceholderFeatureCard(
             icon = { Icon(Icons.Rounded.AutoAwesome, contentDescription = null) },
-            title = "자동 품질 체크 예정",
-            description = "흔들림, 전신 포함 여부, 배경 분리 상태를 분석 전에 확인하는 기능을 넣을 수 있어."
+            title = "이미지 품질 안내",
+            description = "흔들림이 적고 배경과 신체가 잘 구분되는 사진을 권장합니다."
         )
     }
 

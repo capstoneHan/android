@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
@@ -23,13 +22,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 @Composable
 internal fun ScreenHeroCard(
@@ -168,6 +164,8 @@ internal fun SoftPill(
             text = text,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
             style = MaterialTheme.typography.labelLarge,
+            maxLines = 1,
+            overflow = TextOverflow.Clip,
             color = MaterialTheme.colorScheme.onSecondaryContainer
         )
     }
@@ -192,67 +190,6 @@ internal fun TagSummaryBlock(
             values.forEach { label ->
                 SoftPill(text = label)
             }
-        }
-    }
-}
-
-@Composable
-internal fun MetricJsonBlock(summary: ResultSummary) {
-    val clipboardManager = LocalClipboardManager.current
-    val metricJson = remember(summary) {
-        buildString {
-            appendLine("요약 판단 수치")
-            appendLine("어깨/골반 비율: ${summary.shoulderToHipRatio.format(3)}")
-            appendLine("상체/하체 길이 비율: ${summary.torsoToLegRatio.format(3)}")
-            appendLine("허리/골반 비율: ${summary.waistToHipRatio.format(3)}")
-            appendLine("허리/어깨 비율: ${summary.waistToShoulderRatio.format(3)}")
-            appendLine("골반/어깨 비율: ${summary.hipToShoulderRatio.format(3)}")
-            appendLine("허벅지/골반 비율: ${summary.thighToHipRatio.format(3)}")
-            appendLine("어깨 폭/신장 비율: ${summary.shoulderWidthToHeightRatio.format(3)}")
-            appendLine("허리 폭/신장 비율: ${summary.waistWidthToHeightRatio.format(3)}")
-            appendLine("골반 폭/신장 비율: ${summary.hipWidthToHeightRatio.format(3)}")
-            appendLine("허벅지 폭/신장 비율: ${summary.thighWidthToHeightRatio.format(3)}")
-            appendLine("입력 키(cm): ${summary.heightCm.format(1)}")
-            appendLine("입력 몸무게(kg): ${summary.weightKg.format(1)}")
-            appendLine("BMI: ${summary.bmi.format(2)}")
-            appendLine("BMI 구간: ${summary.bmiBand}")
-            appendLine("키 구간: ${summary.heightBand}")
-            appendLine("어깨 마스크 폭: ${summary.shoulderWidthMask.format(3)}")
-            appendLine("허리 마스크 폭: ${summary.waistWidthMask.format(3)}")
-            appendLine("골반 마스크 폭: ${summary.hipWidthMask.format(3)}")
-            appendLine("허벅지 마스크 폭: ${summary.thighWidthMask.format(3)}")
-            appendLine("어깨 기준 행: ${summary.shoulderRowMask}")
-            appendLine("허리 기준 행: ${summary.waistRowMask}")
-            appendLine("골반 기준 행: ${summary.hipRowMask}")
-            appendLine("허벅지 기준 행: ${summary.thighRowMask}")
-        }
-    }
-
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text("판단 수치", style = MaterialTheme.typography.labelLarge)
-            TextButton(
-                onClick = {
-                    clipboardManager.setText(AnnotatedString(metricJson))
-                }
-            ) {
-                Text("복사")
-            }
-        }
-        SelectionContainer {
-            Text(
-                text = metricJson,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                style = MaterialTheme.typography.bodySmall,
-                fontFamily = FontFamily.Monospace,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
         }
     }
 }
