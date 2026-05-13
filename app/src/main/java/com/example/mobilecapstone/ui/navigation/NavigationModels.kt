@@ -13,7 +13,8 @@ internal enum class AppScreen(
     RecommendationList("추천 목록", false),
     RecommendationDetail("추천 상세", false),
     History("히스토리", true),
-    Settings("설정", true)
+    Settings("설정", true),
+    ProfileEdit("내 정보 수정", false)
 }
 
 internal data class NavItem(

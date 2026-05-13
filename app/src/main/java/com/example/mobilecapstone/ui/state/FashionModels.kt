@@ -11,14 +11,80 @@ internal data class RecommendationItem(
     val subtitle: String,
     val price: String,
     val description: String,
-    val styleTip: String
+    val styleTip: String,
+    val rawPrice: Int = 0,
+    val discountedPrice: Int = rawPrice,
+    val brandName: String = "",
+    val season: String = "All",
+    val gender: String = "All",
+    val baseColour: String = "NA",
+    val usage: String = "Fashion",
+    val rating: Int = 0,
+    val productType: String = "",
+    val fit: String = "",
+    val imageUrl: String = "",
+    val matchedTags: List<String> = emptyList(),
+    val matchScore: Double = 0.0,
+    val userRating: Int? = null,
+    val totalDwellTimeMs: Long = 0L
 )
 
+internal data class RecommendationFilterState(
+    val minPrice: Int = 0,
+    val maxPrice: Int = 500_000,
+    val selectedSeason: String = "All",
+    val selectedGender: String = "All",
+    val selectedUsage: String = "All",
+    val selectedBaseColour: String = "All",
+    val selectedBrandName: String = "All",
+    val selectedArticleType: String = "All",
+    val selectedFit: String = "All",
+    val discountedOnly: Boolean = false
+) {
+    fun toServerQuery(
+        tags: List<String>,
+        tagPreferenceWeights: Map<String, Double> = emptyMap()
+    ): JSONObject {
+        return JSONObject()
+            .put("min_price", minPrice)
+            .put("max_price", maxPrice)
+            .put("season", selectedSeason.takeUnless { it == "All" } ?: JSONObject.NULL)
+            .put("gender", selectedGender.takeUnless { it == "All" } ?: JSONObject.NULL)
+            .put("usage", selectedUsage.takeUnless { it == "All" } ?: JSONObject.NULL)
+            .put("base_colour", selectedBaseColour.takeUnless { it == "All" } ?: JSONObject.NULL)
+            .put("brand_name", selectedBrandName.takeUnless { it == "All" } ?: JSONObject.NULL)
+            .put("article_type", selectedArticleType.takeUnless { it == "All" } ?: JSONObject.NULL)
+            .put("fit", selectedFit.takeUnless { it == "All" } ?: JSONObject.NULL)
+            .put("discounted_only", discountedOnly)
+            .put(
+                "tag_preferences",
+                JSONArray(
+                    tagPreferenceWeights.map { (tag, weight) ->
+                        JSONObject()
+                            .put("tag", tag)
+                            .put("weight", weight)
+                    }
+                )
+            )
+            .put("style_tags", JSONArray(tags))
+    }
+}
+
 internal data class HistoryEntry(
+    val recordId: String,
     val createdAt: String,
-    val assetName: String,
+    val imageLabel: String,
+    val imageUri: String?,
     val frameType: String,
-    val tags: List<String>
+    val tags: List<String>,
+    val heightCm: Double?,
+    val weightKg: Double?,
+    val recommendations: List<RecommendationItem>
+)
+
+data class UserBodyProfile(
+    val heightCm: Double? = null,
+    val weightKg: Double? = null
 )
 
 internal data class ResultSummary(
@@ -49,8 +115,14 @@ internal data class ResultSummary(
     val faceShape: String,
     val skinUndertone: String,
     val skinClarity: String,
+    val heightCm: Double,
+    val weightKg: Double,
+    val bmi: Double,
+    val bmiBand: String,
+    val heightBand: String,
     val bodyRatioTags: List<String>,
     val silhouetteTags: List<String>,
+    val profileTags: List<String>,
     val faceTags: List<String>,
     val toneTags: List<String>,
     val tags: List<String>
@@ -64,16 +136,22 @@ internal data class ResultSummary(
 
                 val pose = raw.optJSONObject("pose")
                 val derived = pose?.optJSONObject("derived_metrics")
+                val bodyRatio = feature.optJSONObject("body_ratio")
                 val silhouette = feature.optJSONObject("silhouette_features")
                 val bodyFrame = feature.optJSONObject("body_frame")
+                val userProfile = feature.optJSONObject("user_profile")
+                val bodyMass = feature.optJSONObject("body_mass_features")
                 val faceFeatures = feature.optJSONObject("face_features")
                 val colorFeatures = feature.optJSONObject("color_features")
                 val tagGroups = feature.optJSONObject("tag_groups")
 
                 ResultSummary(
                     landmarkCount = pose?.optInt("landmark_count", 0) ?: 0,
-                    shoulderToHipRatio = derived?.optDouble("shoulder_to_hip_ratio", 0.0) ?: 0.0,
-                    torsoToLegRatio = feature.optJSONObject("body_ratio")?.optDouble("torso_to_leg_ratio", 0.0) ?: 0.0,
+                    shoulderToHipRatio = bodyRatio?.optDouble(
+                        "shoulder_to_hip_ratio",
+                        derived?.optDouble("shoulder_to_hip_ratio", 0.0) ?: 0.0
+                    ) ?: 0.0,
+                    torsoToLegRatio = bodyRatio?.optDouble("torso_to_leg_ratio", 0.0) ?: 0.0,
                     waistToHipRatio = silhouette?.optDouble("waist_to_hip_ratio", 0.0) ?: 0.0,
                     waistToShoulderRatio = silhouette?.optDouble("waist_to_shoulder_ratio", 0.0) ?: 0.0,
                     hipToShoulderRatio = silhouette?.optDouble("hip_to_shoulder_ratio", 0.0) ?: 0.0,
@@ -98,8 +176,14 @@ internal data class ResultSummary(
                     faceShape = faceFeatures?.optString("shape", "unknown") ?: "unknown",
                     skinUndertone = colorFeatures?.optString("undertone", "unknown") ?: "unknown",
                     skinClarity = colorFeatures?.optString("clarity", "unknown") ?: "unknown",
+                    heightCm = userProfile?.optDouble("height_cm", 0.0) ?: 0.0,
+                    weightKg = userProfile?.optDouble("weight_kg", 0.0) ?: 0.0,
+                    bmi = bodyMass?.optDouble("bmi", 0.0) ?: 0.0,
+                    bmiBand = bodyMass?.optString("bmi_band", "unknown") ?: "unknown",
+                    heightBand = bodyMass?.optString("height_band", "unknown") ?: "unknown",
                     bodyRatioTags = jsonArrayToList(tagGroups?.optJSONArray("body_ratio_tags")),
                     silhouetteTags = jsonArrayToList(tagGroups?.optJSONArray("silhouette_tags")),
+                    profileTags = jsonArrayToList(tagGroups?.optJSONArray("profile_tags")),
                     faceTags = jsonArrayToList(tagGroups?.optJSONArray("face_tags")),
                     toneTags = jsonArrayToList(tagGroups?.optJSONArray("tone_tags")),
                     tags = jsonArrayToList(feature.optJSONArray("style_tags"))
@@ -116,6 +200,14 @@ internal fun jsonArrayToList(array: JSONArray?): List<String> {
         items += array.optString(index)
     }
     return items
+}
+
+internal fun tagsToJson(tags: List<String>): String {
+    return JSONArray(tags).toString()
+}
+
+internal fun tagsFromJson(rawJson: String): List<String> {
+    return runCatching { jsonArrayToList(JSONArray(rawJson)) }.getOrDefault(emptyList())
 }
 
 internal fun humanizeToken(value: String): String {
@@ -228,6 +320,8 @@ internal data class PipelineUiState(
     val steps: List<PipelineStep> = PoseExtractionPipeline.initialSteps(),
     val completedSteps: Set<String> = emptySet(),
     val selectedAsset: String = PoseExtractionPipeline.sampleAssets.first(),
+    val selectedImageUri: String? = null,
+    val selectedImageLabel: String = assetLabel(selectedAsset),
     val isRunning: Boolean = false,
     val statusMessage: String = "분석 준비 완료",
     val jsonOutput: String = "",
@@ -235,7 +329,6 @@ internal data class PipelineUiState(
     val outputFilePath: String = "",
     val sampleBitmap: Bitmap? = null
 ) {
-
     fun beginRun(): PipelineUiState {
         return copy(
             isRunning = true,
@@ -316,24 +409,37 @@ internal data class PipelineUiState(
     }
 
     fun failStep(stepId: String, error: Throwable): PipelineUiState {
-        val errorText = buildString {
-            append("ERROR: ")
-            append(error::class.qualifiedName ?: error::class.simpleName ?: "UnknownError")
-            val message = error.message
-            if (!message.isNullOrBlank()) {
-                append("\n")
-                append(message)
+        val userMessage = error.message?.takeIf { it.isNotBlank() } ?: "분석에 실패했어. 사진을 다시 선택해줘."
+        val errorText = if (error is AnalysisInputException) {
+            userMessage
+        } else {
+            buildString {
+                append("ERROR: ")
+                append(error::class.qualifiedName ?: error::class.simpleName ?: "UnknownError")
+                val message = error.message
+                if (!message.isNullOrBlank()) {
+                    append("\n")
+                    append(message)
+                }
+                append("\n\n")
+                append(error.stackTraceToString())
             }
-            append("\n\n")
-            append(error.stackTraceToString())
         }
         return copy(
             isRunning = false,
-            statusMessage = "${stepTitle(stepId)} 실패",
+            statusMessage = if (error is AnalysisInputException) {
+                userMessage
+            } else {
+                "${stepTitle(stepId)} 실패"
+            },
             jsonOutput = errorText,
             featureJsonOutput = errorText,
+            outputFilePath = "",
+            completedSteps = emptySet(),
             steps = steps.map { step ->
-                if (step.id in completedSteps) {
+                if (error is AnalysisInputException) {
+                    step.copy(status = StepStatus.PENDING)
+                } else if (step.id in completedSteps) {
                     step.copy(status = StepStatus.COMPLETED)
                 } else {
                     step.copy(status = StepStatus.PENDING)

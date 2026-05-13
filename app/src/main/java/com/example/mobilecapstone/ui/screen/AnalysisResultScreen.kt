@@ -102,7 +102,7 @@ internal fun AnalysisResultScreen(
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text("선택된 이미지", style = MaterialTheme.typography.titleLarge)
                             Text(
-                                text = assetLabel(uiState.selectedAsset),
+                                text = uiState.selectedImageLabel,
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )

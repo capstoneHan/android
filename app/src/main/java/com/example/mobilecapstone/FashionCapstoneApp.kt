@@ -1,5 +1,11 @@
-﻿package com.example.mobilecapstone
+package com.example.mobilecapstone
 
+import android.content.Context
+import android.graphics.Bitmap
+import android.net.Uri
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CameraAlt
@@ -12,6 +18,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -19,8 +26,21 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import java.time.LocalDateTime
+import androidx.core.content.FileProvider
+import com.example.mobilecapstone.data.AnalysisRecordDatabase
+import com.example.mobilecapstone.data.AnalysisRecordEntity
+import com.example.mobilecapstone.data.ItemFeedbackEntity
+import com.example.mobilecapstone.data.MockRecommendationServer
+import com.example.mobilecapstone.data.TagPreferenceEntity
+import com.example.mobilecapstone.data.toEntity
+import com.example.mobilecapstone.data.toModel
+import java.io.File
+import java.io.FileOutputStream
+import java.time.Instant
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.UUID
+import kotlin.math.min
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -32,13 +52,28 @@ internal fun FashionCapstoneApp() {
 
     var currentScreen by remember { mutableStateOf(AppScreen.Login) }
     var uiState by remember { mutableStateOf(PipelineUiState()) }
+    var currentRecordId by remember { mutableStateOf<String?>(null) }
+    var recommendationFilters by remember { mutableStateOf(RecommendationFilterState()) }
     var selectedRecommendation by remember { mutableStateOf<RecommendationItem?>(null) }
-    var historyEntries by remember { mutableStateOf(listOf<HistoryEntry>()) }
+    var selectedRecommendationRecordId by remember { mutableStateOf<String?>(null) }
+    var recommendationDetailReturnScreen by remember { mutableStateOf(AppScreen.RecommendationList) }
+
+    val database = remember { AnalysisRecordDatabase.getInstance(context) }
+    val analysisRecordDao = remember { database.analysisRecordDao() }
+    val recommendationItemDao = remember { database.recommendationItemDao() }
+    val itemFeedbackDao = remember { database.itemFeedbackDao() }
+    val tagPreferenceDao = remember { database.tagPreferenceDao() }
+    val mockRecommendationServer = remember { MockRecommendationServer() }
+
+    val localRecords by analysisRecordDao.observeRecords().collectAsState(initial = emptyList())
+    val storedRecommendationEntities by recommendationItemDao.observeAll().collectAsState(initial = emptyList())
+    val feedbackRecords by itemFeedbackDao.observeAll().collectAsState(initial = emptyList())
+    val tagPreferences by tagPreferenceDao.observeAll().collectAsState(initial = emptyList())
 
     var accountName by remember { mutableStateOf("사용자") }
-
     var loginEmail by remember { mutableStateOf("") }
     var loginPassword by remember { mutableStateOf("") }
+    var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
 
     var signupUsername by remember { mutableStateOf("") }
     var signupEmail by remember { mutableStateOf("") }
@@ -46,6 +81,10 @@ internal fun FashionCapstoneApp() {
     var signupPasswordConfirm by remember { mutableStateOf("") }
     var signupHeight by remember { mutableStateOf("") }
     var signupWeight by remember { mutableStateOf("") }
+    var profileHeightInput by remember { mutableStateOf("") }
+    var profileWeightInput by remember { mutableStateOf("") }
+    var profileEditHeightInput by remember { mutableStateOf("") }
+    var profileEditWeightInput by remember { mutableStateOf("") }
 
     var authMessage by remember { mutableStateOf<String?>(null) }
     var authLoading by remember { mutableStateOf(false) }
@@ -73,9 +112,41 @@ internal fun FashionCapstoneApp() {
         )
     }
 
-    LaunchedEffect(uiState.selectedAsset) {
+    val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
+        val uri = pendingCameraUri
+        if (saved && uri != null) {
+            uiState = uiState.copy(
+                selectedImageUri = uri.toString(),
+                selectedImageLabel = "카메라 촬영 사진",
+                jsonOutput = "",
+                featureJsonOutput = "",
+                outputFilePath = "",
+                statusMessage = "촬영한 사진이 선택되었습니다. 분석을 실행해 주세요."
+            )
+            currentScreen = AppScreen.Analysis
+        }
+        pendingCameraUri = null
+    }
+
+    val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            uiState = uiState.copy(
+                selectedImageUri = uri.toString(),
+                selectedImageLabel = "갤러리 선택 사진",
+                jsonOutput = "",
+                featureJsonOutput = "",
+                outputFilePath = "",
+                statusMessage = "갤러리 사진이 선택되었습니다. 분석을 실행해 주세요."
+            )
+            currentScreen = AppScreen.Analysis
+        }
+    }
+
+    LaunchedEffect(uiState.selectedAsset, uiState.selectedImageUri) {
         val sample = withContext(Dispatchers.IO) {
-            PoseExtractionPipeline.loadSampleBitmap(context, uiState.selectedAsset)
+            uiState.selectedImageUri?.let { imageUri ->
+                PoseExtractionPipeline.loadImageBitmap(context, imageUri)
+            } ?: PoseExtractionPipeline.loadSampleBitmap(context, uiState.selectedAsset)
         }
         uiState = uiState.copy(sampleBitmap = sample)
     }
@@ -86,9 +157,145 @@ internal fun FashionCapstoneApp() {
             featureJson = uiState.featureJsonOutput
         )
     }
+    val feedbackByProduct = remember(feedbackRecords) {
+        feedbackRecords.associateBy { it.recordId to it.productId }
+    }
+    val tagPreferenceWeights = remember(tagPreferences) {
+        tagPreferences.associate { it.tag to it.weight }
+    }
+    val recommendations = remember(summary, recommendationFilters, currentRecordId, feedbackByProduct) {
+        val recordId = currentRecordId
+        buildRecommendationMocks(context, summary, recommendationFilters).map { item ->
+            val feedback = recordId?.let { feedbackByProduct[it to item.id] }
+            item.copy(
+                userRating = feedback?.userRating,
+                totalDwellTimeMs = feedback?.totalDwellTimeMs ?: 0L
+            )
+        }
+    }
+    val colourFilterOptions = remember(summary, recommendationFilters) {
+        buildRecommendationMocks(
+            context = context,
+            summary = summary,
+            filters = recommendationFilters.copy(selectedBaseColour = "All")
+        )
+            .map { it.baseColour }
+            .filter { it.isNotBlank() && it != "NA" }
+            .distinct()
+            .sorted()
+    }
+    val historyEntries = remember(localRecords, storedRecommendationEntities, feedbackByProduct) {
+        val recommendationsByRecord = storedRecommendationEntities.groupBy { it.recordId }
+        localRecords.map { record ->
+            val createdAt = DateTimeFormatter.ofPattern("MM.dd HH:mm").format(
+                Instant.ofEpochMilli(record.createdAt).atZone(ZoneId.systemDefault())
+            )
+            val recordRecommendations = recommendationsByRecord[record.recordId].orEmpty().map { entity ->
+                entity.toModel(feedbackByProduct[record.recordId to entity.productId])
+            }
+            HistoryEntry(
+                recordId = record.recordId,
+                createdAt = createdAt,
+                imageLabel = record.imageLabel,
+                imageUri = record.imageUri,
+                frameType = record.frameType,
+                tags = tagsFromJson(record.tagsJson),
+                heightCm = record.heightCm,
+                weightKg = record.weightKg,
+                recommendations = recordRecommendations
+            )
+        }
+    }
 
-    val recommendations = remember(summary) {
-        buildRecommendationMocks(context, summary)
+    fun saveRecommendationSnapshot(recordId: String?, items: List<RecommendationItem>) {
+        if (recordId == null || items.isEmpty()) return
+        scope.launch(Dispatchers.IO) {
+            recommendationItemDao.upsertAll(
+                items.map { item ->
+                    item.toEntity(
+                        recordId = recordId,
+                        createdAt = System.currentTimeMillis()
+                    )
+                }
+            )
+        }
+    }
+
+    suspend fun adjustTagPreferences(tags: List<String>, delta: Double) {
+        tags.distinct().filter { it.isNotBlank() }.forEach { tag ->
+            val current = tagPreferenceDao.getByTag(tag)
+            val nextWeight = ((current?.weight ?: 0.0) + delta).coerceIn(-1.0, 1.0)
+            tagPreferenceDao.upsert(
+                TagPreferenceEntity(
+                    tag = tag,
+                    weight = nextWeight,
+                    updatedAt = System.currentTimeMillis()
+                )
+            )
+        }
+    }
+
+    fun submitRating(recordId: String, item: RecommendationItem, rating: Int) {
+        scope.launch(Dispatchers.IO) {
+            val existing = itemFeedbackDao.getFeedback(recordId, item.id)
+            itemFeedbackDao.upsert(
+                ItemFeedbackEntity(
+                    recordId = recordId,
+                    productId = item.id,
+                    userRating = rating,
+                    totalDwellTimeMs = existing?.totalDwellTimeMs ?: 0L,
+                    viewCount = existing?.viewCount ?: 0,
+                    lastViewedAt = existing?.lastViewedAt,
+                    updatedAt = System.currentTimeMillis()
+                )
+            )
+            val delta = ((rating / 5.0) - 0.5) * 0.2
+            adjustTagPreferences(item.matchedTags, delta)
+        }
+    }
+
+    fun recordDetailDwell(recordId: String, item: RecommendationItem, dwellTimeMs: Long) {
+        if (dwellTimeMs <= 0L) return
+        scope.launch(Dispatchers.IO) {
+            val existing = itemFeedbackDao.getFeedback(recordId, item.id)
+            val previousDwell = existing?.totalDwellTimeMs ?: 0L
+            itemFeedbackDao.upsert(
+                ItemFeedbackEntity(
+                    recordId = recordId,
+                    productId = item.id,
+                    userRating = existing?.userRating,
+                    totalDwellTimeMs = previousDwell + dwellTimeMs,
+                    viewCount = (existing?.viewCount ?: 0) + 1,
+                    lastViewedAt = System.currentTimeMillis(),
+                    updatedAt = System.currentTimeMillis()
+                )
+            )
+            val dwellScore = min(dwellTimeMs / 30_000.0, 1.0)
+            adjustTagPreferences(item.matchedTags, dwellScore * 0.08)
+        }
+    }
+
+    fun navigateBack() {
+        currentScreen = when (currentScreen) {
+            AppScreen.RecommendationDetail -> recommendationDetailReturnScreen
+            AppScreen.RecommendationList -> AppScreen.Analysis
+            AppScreen.Capture,
+            AppScreen.Analysis,
+            AppScreen.History,
+            AppScreen.Settings -> AppScreen.Home
+            AppScreen.ProfileEdit -> AppScreen.Settings
+            AppScreen.Signup,
+            AppScreen.Home,
+            AppScreen.Login -> currentScreen
+        }
+    }
+
+    BackHandler(
+        enabled = currentScreen != AppScreen.Login &&
+            currentScreen != AppScreen.Signup &&
+            currentScreen != AppScreen.Home
+    ) {
+        navigateBack()
     }
 
     Scaffold(
@@ -98,16 +305,10 @@ internal fun FashionCapstoneApp() {
                 AppTopBar(
                     title = currentScreen.title,
                     showBack = currentScreen == AppScreen.Signup ||
-                            currentScreen == AppScreen.RecommendationList ||
-                            currentScreen == AppScreen.RecommendationDetail,
-                    onBack = {
-                        currentScreen = when (currentScreen) {
-                            AppScreen.Signup -> AppScreen.Login
-                            AppScreen.RecommendationDetail -> AppScreen.RecommendationList
-                            AppScreen.RecommendationList -> AppScreen.Analysis
-                            else -> AppScreen.Home
-                        }
-                    }
+                        currentScreen == AppScreen.RecommendationList ||
+                        currentScreen == AppScreen.RecommendationDetail ||
+                        currentScreen == AppScreen.ProfileEdit,
+                    onBack = ::navigateBack
                 )
             }
         },
@@ -136,6 +337,14 @@ internal fun FashionCapstoneApp() {
                     authMessage = null
                 },
                 onLogin = {
+                    // TODO: 백엔드 로그인 API 연결 시 아래 임시 우회 코드를 제거하고 서버 로그인 로직을 복원하세요.
+                    accountName = loginEmail.substringBefore("@").ifBlank { "사용자" }
+                    loginPassword = ""
+                    authMessage = null
+                    authLoading = false
+                    currentScreen = AppScreen.Home
+
+                    /*
                     val validationMessage = validateLoginInput(
                         email = loginEmail,
                         password = loginPassword
@@ -169,7 +378,6 @@ internal fun FashionCapstoneApp() {
                                 if (response.success) {
                                     accountName = response.username
                                         ?: loginEmail.substringBefore("@").ifBlank { "사용자" }
-
                                     loginPassword = ""
                                     currentScreen = AppScreen.Home
                                 }
@@ -180,6 +388,7 @@ internal fun FashionCapstoneApp() {
                             }
                         )
                     }
+                    */
                 },
                 onOpenSignup = {
                     authMessage = null
@@ -260,6 +469,8 @@ internal fun FashionCapstoneApp() {
                                 authMessage = response.message
 
                                 if (response.success) {
+                                    profileHeightInput = signupHeight
+                                    profileWeightInput = signupWeight
                                     loginEmail = ""
                                     loginPassword = ""
 
@@ -302,16 +513,27 @@ internal fun FashionCapstoneApp() {
             AppScreen.Capture -> CaptureScreen(
                 modifier = Modifier.padding(innerPadding),
                 selectedAsset = uiState.selectedAsset,
+                selectedImageLabel = uiState.selectedImageLabel,
                 sampleBitmap = uiState.sampleBitmap,
                 sampleOptions = PoseExtractionPipeline.sampleAssets,
                 onSelect = { assetName ->
                     uiState = uiState.copy(
                         selectedAsset = assetName,
+                        selectedImageUri = null,
+                        selectedImageLabel = assetLabel(assetName),
                         jsonOutput = "",
                         featureJsonOutput = "",
                         outputFilePath = "",
                         statusMessage = "샘플이 변경되었습니다. 분석을 다시 실행해 주세요."
                     )
+                },
+                onTakePhoto = {
+                    val uri = createCameraImageUri(context)
+                    pendingCameraUri = uri
+                    cameraLauncher.launch(uri)
+                },
+                onPickFromGallery = {
+                    galleryLauncher.launch("image/*")
                 },
                 onGoAnalysis = { currentScreen = AppScreen.Analysis }
             )
@@ -324,6 +546,8 @@ internal fun FashionCapstoneApp() {
                 onSelectAsset = { assetName ->
                     uiState = uiState.copy(
                         selectedAsset = assetName,
+                        selectedImageUri = null,
+                        selectedImageLabel = assetLabel(assetName),
                         jsonOutput = "",
                         featureJsonOutput = "",
                         outputFilePath = "",
@@ -334,21 +558,39 @@ internal fun FashionCapstoneApp() {
                     if (uiState.isRunning) return@AnalysisResultScreen
 
                     scope.launch {
+                        val userBodyProfile = UserBodyProfile(
+                            heightCm = profileHeightInput.toDoubleOrNull(),
+                            weightKg = profileWeightInput.toDoubleOrNull()
+                        )
                         uiState = uiState.beginRun()
 
                         val selectedAsset = uiState.selectedAsset
-
+                        val selectedImageUri = uiState.selectedImageUri
                         val outcome = withContext(Dispatchers.IO) {
                             runCatching {
-                                PoseExtractionPipeline.runPoseExtraction(
-                                    context = context,
-                                    assetName = selectedAsset,
-                                    onStepStatusChanged = { stepId, status ->
-                                        scope.launch {
-                                            uiState = uiState.updateStepStatus(stepId, status)
+                                if (selectedImageUri != null) {
+                                    PoseExtractionPipeline.runPoseExtractionFromUri(
+                                        context = context,
+                                        imageUri = selectedImageUri,
+                                        userBodyProfile = userBodyProfile,
+                                        onStepStatusChanged = { stepId, status ->
+                                            scope.launch {
+                                                uiState = uiState.updateStepStatus(stepId, status)
+                                            }
                                         }
-                                    }
-                                )
+                                    )
+                                } else {
+                                    PoseExtractionPipeline.runPoseExtraction(
+                                        context = context,
+                                        assetName = selectedAsset,
+                                        userBodyProfile = userBodyProfile,
+                                        onStepStatusChanged = { stepId, status ->
+                                            scope.launch {
+                                                uiState = uiState.updateStepStatus(stepId, status)
+                                            }
+                                        }
+                                    )
+                                }
                             }
                         }
 
@@ -360,16 +602,40 @@ internal fun FashionCapstoneApp() {
                                     result.jsonOutput,
                                     result.featureJsonOutput
                                 )?.let { parsed ->
-                                    historyEntries = listOf(
-                                        HistoryEntry(
-                                            createdAt = DateTimeFormatter
-                                                .ofPattern("MM.dd HH:mm")
-                                                .format(LocalDateTime.now()),
-                                            assetName = selectedAsset,
+                                    val recordId = UUID.randomUUID().toString()
+                                    currentRecordId = recordId
+                                    val recordRecommendations = buildRecommendationMocks(
+                                        context = context,
+                                        summary = parsed,
+                                        filters = recommendationFilters
+                                    )
+                                    val storedImagePath = persistAnalysisImage(
+                                        context = context,
+                                        recordId = recordId,
+                                        selectedAsset = selectedAsset,
+                                        selectedImageUri = selectedImageUri
+                                    )
+                                    analysisRecordDao.upsert(
+                                        AnalysisRecordEntity(
+                                            recordId = recordId,
+                                            imageUri = storedImagePath,
+                                            imageLabel = uiState.selectedImageLabel,
+                                            tagsJson = tagsToJson(parsed.tags),
+                                            heightCm = userBodyProfile.heightCm,
+                                            weightKg = userBodyProfile.weightKg,
                                             frameType = parsed.frameType,
-                                            tags = parsed.tags
+                                            createdAt = System.currentTimeMillis()
                                         )
-                                    ) + historyEntries
+                                    )
+                                    mockRecommendationServer.saveRecommendations(recordId, recordRecommendations)
+                                    recommendationItemDao.upsertAll(
+                                        recordRecommendations.map { item ->
+                                            item.toEntity(
+                                                recordId = recordId,
+                                                createdAt = System.currentTimeMillis()
+                                            )
+                                        }
+                                    )
                                 }
 
                                 nextState
@@ -389,8 +655,17 @@ internal fun FashionCapstoneApp() {
                 modifier = Modifier.padding(innerPadding),
                 summary = summary,
                 recommendations = recommendations,
+                filters = recommendationFilters,
+                colourOptions = colourFilterOptions,
+                tagPreferenceWeights = tagPreferenceWeights,
+                onFiltersChange = { recommendationFilters = it },
+                onSearch = {
+                    saveRecommendationSnapshot(currentRecordId, recommendations)
+                },
                 onSelect = {
                     selectedRecommendation = it
+                    selectedRecommendationRecordId = currentRecordId
+                    recommendationDetailReturnScreen = AppScreen.RecommendationList
                     currentScreen = AppScreen.RecommendationDetail
                 },
                 onGoAnalysis = {
@@ -402,14 +677,36 @@ internal fun FashionCapstoneApp() {
                 modifier = Modifier.padding(innerPadding),
                 item = selectedRecommendation,
                 summary = summary,
+                onDwellMeasured = { item, dwellTimeMs ->
+                    selectedRecommendationRecordId?.let { recordId ->
+                        recordDetailDwell(recordId, item, dwellTimeMs)
+                    }
+                },
                 onBackToList = {
-                    currentScreen = AppScreen.RecommendationList
+                    currentScreen = recommendationDetailReturnScreen
                 }
             )
 
             AppScreen.History -> HistoryScreen(
                 modifier = Modifier.padding(innerPadding),
                 historyEntries = historyEntries,
+                onRate = ::submitRating,
+                onSelectRecommendation = { entry, item ->
+                    selectedRecommendation = item
+                    selectedRecommendationRecordId = entry.recordId
+                    recommendationDetailReturnScreen = AppScreen.History
+                    currentScreen = AppScreen.RecommendationDetail
+                },
+                onDeleteRecord = { entry ->
+                    scope.launch(Dispatchers.IO) {
+                        analysisRecordDao.deleteById(entry.recordId)
+                        recommendationItemDao.deleteByRecordId(entry.recordId)
+                        mockRecommendationServer.deleteRecommendations(entry.recordId)
+                        entry.imageUri?.let { path ->
+                            runCatching { File(path).delete() }
+                        }
+                    }
+                },
                 onGoAnalysis = {
                     currentScreen = AppScreen.Analysis
                 }
@@ -426,10 +723,40 @@ internal fun FashionCapstoneApp() {
                 onWifiOnlySyncChange = {
                     wifiOnlySync = it
                 },
+                onEditProfile = {
+                    profileEditHeightInput = profileHeightInput
+                    profileEditWeightInput = profileWeightInput
+                    currentScreen = AppScreen.ProfileEdit
+                },
                 onLogout = {
                     currentScreen = AppScreen.Login
                     loginPassword = ""
                     authMessage = null
+                }
+            )
+
+            AppScreen.ProfileEdit -> ProfileEditScreen(
+                modifier = Modifier.padding(innerPadding),
+                currentHeight = profileHeightInput,
+                currentWeight = profileWeightInput,
+                editedHeight = profileEditHeightInput,
+                editedWeight = profileEditWeightInput,
+                onHeightChange = {
+                    profileEditHeightInput = it
+                },
+                onWeightChange = {
+                    profileEditWeightInput = it
+                },
+                onSave = {
+                    profileHeightInput = profileEditHeightInput
+                    profileWeightInput = profileEditWeightInput
+                    uiState = uiState.copy(
+                        jsonOutput = "",
+                        featureJsonOutput = "",
+                        outputFilePath = "",
+                        statusMessage = "신체 정보가 변경되었습니다. 분석을 다시 실행해 주세요."
+                    )
+                    currentScreen = AppScreen.Settings
                 }
             )
         }
@@ -474,4 +801,36 @@ private fun validateSignupInput(
         parsedWeight !in 30..200 -> "몸무게는 30~200kg 범위로 입력해 주세요."
         else -> null
     }
+}
+
+private fun createCameraImageUri(context: Context): Uri {
+    val imageDir = File(context.cacheDir, "camera")
+    imageDir.mkdirs()
+    val imageFile = File.createTempFile("capture_", ".jpg", imageDir)
+    return FileProvider.getUriForFile(
+        context,
+        "${context.packageName}.fileprovider",
+        imageFile
+    )
+}
+
+private fun persistAnalysisImage(
+    context: Context,
+    recordId: String,
+    selectedAsset: String,
+    selectedImageUri: String?
+): String {
+    val imageDir = File(context.filesDir, "analysis_records")
+    imageDir.mkdirs()
+    val imageFile = File(imageDir, "$recordId.jpg")
+
+    val bitmap = selectedImageUri?.let { uri ->
+        PoseExtractionPipeline.loadImageBitmap(context, uri)
+    } ?: PoseExtractionPipeline.loadSampleBitmap(context, selectedAsset)
+
+    FileOutputStream(imageFile).use { target ->
+        bitmap.compress(Bitmap.CompressFormat.JPEG, 92, target)
+    }
+
+    return imageFile.absolutePath
 }
