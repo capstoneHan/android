@@ -4,8 +4,10 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.graphics.ImageDecoder
 import android.graphics.PointF
 import android.graphics.Rect
+import android.net.Uri
 import android.util.Log
 import com.google.android.gms.tasks.Tasks
 import com.google.android.gms.tasks.Task
@@ -53,6 +55,8 @@ data class PipelineStep(
     val status: StepStatus = StepStatus.PENDING
 )
 
+class AnalysisInputException(message: String) : IllegalArgumentException(message)
+
 object PoseExtractionPipeline {
     private const val TAG = "PoseExtractionPipeline"
     private const val MAX_ANALYSIS_IMAGE_SIDE = 1280
@@ -89,26 +93,53 @@ object PoseExtractionPipeline {
         }
     }
 
+    fun loadImageBitmap(context: Context, imageUri: String): Bitmap {
+        val source = ImageDecoder.createSource(context.contentResolver, Uri.parse(imageUri))
+        val decoded = ImageDecoder.decodeBitmap(source) { decoder, _, _ ->
+            decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+            decoder.isMutableRequired = true
+        }
+        return normalizedBitmap(decoded)
+    }
+
     fun runPoseExtraction(
         context: Context,
         assetName: String,
+        userBodyProfile: UserBodyProfile = UserBodyProfile(),
         onStepStatusChanged: ((String, StepStatus) -> Unit)? = null
     ): ExtractionResult = synchronized(pipelineLock) {
         runPoseExtractionLocked(
             context = context.applicationContext,
-            assetName = assetName,
+            bitmap = loadSampleBitmap(context, assetName),
+            sourceName = assetName,
+            userBodyProfile = userBodyProfile,
+            onStepStatusChanged = onStepStatusChanged
+        )
+    }
+
+    fun runPoseExtractionFromUri(
+        context: Context,
+        imageUri: String,
+        userBodyProfile: UserBodyProfile = UserBodyProfile(),
+        onStepStatusChanged: ((String, StepStatus) -> Unit)? = null
+    ): ExtractionResult = synchronized(pipelineLock) {
+        runPoseExtractionLocked(
+            context = context.applicationContext,
+            bitmap = loadImageBitmap(context, imageUri),
+            sourceName = Uri.parse(imageUri).lastPathSegment ?: "selected_photo",
+            userBodyProfile = userBodyProfile,
             onStepStatusChanged = onStepStatusChanged
         )
     }
 
     private fun runPoseExtractionLocked(
         context: Context,
-        assetName: String,
+        bitmap: Bitmap,
+        sourceName: String,
+        userBodyProfile: UserBodyProfile,
         onStepStatusChanged: ((String, StepStatus) -> Unit)? = null
     ): ExtractionResult {
         // 사진을 비트맵 변환하여 파이프라인에 넣을 수 있게 변환
-        val bitmap = loadSampleBitmap(context, assetName)
-
         // 이미지 객체 생성
         val image = InputImage.fromBitmap(bitmap, 0)
 
@@ -140,6 +171,7 @@ object PoseExtractionPipeline {
         try {
             onStepStatusChanged?.invoke("pose", StepStatus.RUNNING)
             val pose = awaitMlTask("pose") { detector.process(image) }
+            validateFullBodyPose(pose)
             // pose로 체형 계산용 숫자를 뽑는과정
             val derivedMetrics = buildDerivedMetricsJson(pose)
             onStepStatusChanged?.invoke("pose", StepStatus.COMPLETED)
@@ -173,6 +205,7 @@ object PoseExtractionPipeline {
                 sourceImageWidth = bitmap.width,
                 sourceImageHeight = bitmap.height
             )
+            validateSilhouetteMetrics(silhouetteJson)
             onStepStatusChanged?.invoke("silhouette", StepStatus.COMPLETED)
 
             onStepStatusChanged?.invoke("vibe", StepStatus.RUNNING)
@@ -180,7 +213,8 @@ object PoseExtractionPipeline {
                 derivedMetrics = derivedMetrics,
                 silhouetteJson = silhouetteJson,
                 faceJson = faceJson,
-                colorToneJson = colorToneJson
+                colorToneJson = colorToneJson,
+                userBodyProfile = userBodyProfile
             )
             onStepStatusChanged?.invoke("vibe", StepStatus.COMPLETED)
 
@@ -191,7 +225,8 @@ object PoseExtractionPipeline {
                     JSONObject()
                         .put("pipeline_version", "mlkit-style-v2")
                         .put("generated_at", timestamp())
-                        .put("source_image", assetName)
+                        .put("source_image", sourceName)
+                        .put("user_profile", buildUserProfileJson(userBodyProfile))
                 )
                 .put(
                     "pose",
@@ -211,13 +246,14 @@ object PoseExtractionPipeline {
                 silhouetteJson = silhouetteJson,
                 faceJson = faceJson,
                 colorToneJson = colorToneJson,
+                userBodyProfile = userBodyProfile,
                 tagPayload = tagPayload
             )
 
             // 최종 결과 파일 저장
             val file = writeJsonFile(
                 context = context,
-                name = assetName.substringBeforeLast('.') + "_analysis_result.json",
+                name = sourceName.substringBeforeLast('.').ifBlank { "selected_photo" } + "_analysis_result.json",
                 contents = output.toString(2)
             )
 
@@ -312,9 +348,9 @@ object PoseExtractionPipeline {
         silhouetteJson: JSONObject,
         faceJson: JSONObject,
         colorToneJson: JSONObject,
+        userBodyProfile: UserBodyProfile,
         tagPayload: JSONObject
     ): JSONObject {
-        val shoulderToHipRatio = derivedMetrics.optDouble("shoulder_to_hip_ratio", 0.0)
         val torsoHeight = derivedMetrics.optDouble("torso_height", 0.0)
         val legLength = derivedMetrics.optDouble("estimated_leg_length", 0.0)
         val fullBodyHeight = derivedMetrics.optDouble("estimated_full_body_height", 0.0)
@@ -323,6 +359,7 @@ object PoseExtractionPipeline {
         val waistMaskWidth = silhouetteJson.optDouble("waist_width_mask", 0.0)
         val hipMaskWidth = silhouetteJson.optDouble("hip_width_mask", 0.0)
         val thighMaskWidth = silhouetteJson.optDouble("thigh_width_mask", 0.0)
+        val shoulderToHipRatio = safeDoubleRatio(shoulderMaskWidth, hipMaskWidth)
         val waistToHipRatio = safeDoubleRatio(waistMaskWidth, hipMaskWidth)
         val waistToShoulderRatio = safeDoubleRatio(waistMaskWidth, shoulderMaskWidth)
         val silhouetteCoverage = silhouetteJson.optDouble("coverage_ratio", 0.0)
@@ -353,9 +390,11 @@ object PoseExtractionPipeline {
             waistWidthToHeightRatio = waistWidthToHeightRatio
         )
         val upperLowerBalance = upperLowerBalance(torsoToLegRatio)
+        val bodyMassJson = buildBodyMassJson(userBodyProfile)
 
         return JSONObject()
             .put("analysis_type", "normalized_body_features")
+            .put("user_profile", buildUserProfileJson(userBodyProfile))
             .put(
                 "body_ratio",
                 JSONObject()
@@ -372,6 +411,7 @@ object PoseExtractionPipeline {
                     .put("upper_body_volume", volumeBand(shoulderMaskWidth, fullBodyHeight))
                     .put("lower_body_volume", volumeBand(thighMaskWidth, fullBodyHeight))
                     .put("coverage_ratio", silhouetteCoverage)
+                    .put("shoulder_to_hip_ratio", shoulderToHipRatio)
                     .put("waist_to_hip_ratio", waistToHipRatio)
                     .put("waist_to_shoulder_ratio", waistToShoulderRatio)
                     .put("hip_to_shoulder_ratio", hipToShoulderRatio)
@@ -397,6 +437,7 @@ object PoseExtractionPipeline {
                     .put("upper_lower_balance", upperLowerBalance)
                     .put("silhouette_profile", silhouetteProfile)
             )
+            .put("body_mass_features", bodyMassJson)
             .put(
                 "face_features",
                 JSONObject()
@@ -530,13 +571,16 @@ object PoseExtractionPipeline {
         derivedMetrics: JSONObject,
         silhouetteJson: JSONObject,
         faceJson: JSONObject,
-        colorToneJson: JSONObject
+        colorToneJson: JSONObject,
+        userBodyProfile: UserBodyProfile
     ): JSONObject {
-        val shoulderToHipRatio = derivedMetrics.optDouble("shoulder_to_hip_ratio", 0.0)
+        val shoulderMaskWidth = silhouetteJson.optDouble("shoulder_width_mask", 0.0)
+        val hipMaskWidth = silhouetteJson.optDouble("hip_width_mask", 0.0)
+        val shoulderToHipRatio = safeDoubleRatio(shoulderMaskWidth, hipMaskWidth)
         val waistToHipRatio = silhouetteJson.optDouble("waist_to_hip_ratio", 0.0)
         val waistToShoulderRatio = safeDoubleRatio(
             silhouetteJson.optDouble("waist_width_mask", 0.0),
-            silhouetteJson.optDouble("shoulder_width_mask", 0.0)
+            shoulderMaskWidth
         )
         val hipToShoulderRatio = silhouetteJson.optDouble("hip_to_shoulder_ratio", 0.0)
         val thighToHipRatio = silhouetteJson.optDouble("thigh_to_hip_ratio", 0.0)
@@ -576,6 +620,7 @@ object PoseExtractionPipeline {
         )
         val bodyDistribution = bodyDistribution(shoulderToHipRatio)
         val bodyVolume = bodyVolumeProfile(waistWidthToHeightRatio, hipWidthToHeightRatio)
+        val bodyMassJson = buildBodyMassJson(userBodyProfile)
         val faceShape = faceJson.optString("shape", "unknown")
         val faceAspectRatio = faceJson.optJSONObject("metrics")?.optDouble("aspect_ratio", 0.0)?.toFloat() ?: 0f
         val undertone = colorToneJson.optString("undertone", "unknown")
@@ -597,6 +642,14 @@ object PoseExtractionPipeline {
         silhouetteTagForVolume(bodyVolume)?.let(silhouetteTags::add)
         silhouetteTagForProfile(silhouetteProfile)?.let(silhouetteTags::add)
 
+        val profileTags = mutableListOf<String>()
+        profileTagForHeight(bodyMassJson.optString("height_band", "unknown"))?.let(profileTags::add)
+        profileTagForBmi(bodyMassJson.optString("bmi_band", "unknown"))?.let(profileTags::add)
+        profileTagForFit(
+            bmiBand = bodyMassJson.optString("bmi_band", "unknown"),
+            bodyVolume = bodyVolume
+        )?.let(profileTags::add)
+
         val faceTags = mutableListOf<String>()
         faceTag(faceShape, faceAspectRatio)?.let(faceTags::add)
 
@@ -604,16 +657,54 @@ object PoseExtractionPipeline {
         toneTag(undertone, clarity, brightness)?.let(toneTags::add)
 
         val allTags = linkedSetOf<String>()
-        listOf(bodyRatioTags, silhouetteTags, faceTags, toneTags).forEach { group ->
+        listOf(bodyRatioTags, silhouetteTags, profileTags, faceTags, toneTags).forEach { group ->
             group.filterTo(allTags) { it.isNotBlank() }
         }
 
         return JSONObject()
             .put("body_ratio_tags", JSONArray(bodyRatioTags))
             .put("silhouette_tags", JSONArray(silhouetteTags))
+            .put("profile_tags", JSONArray(profileTags))
             .put("face_tags", JSONArray(faceTags))
             .put("tone_tags", JSONArray(toneTags))
             .put("all_tags", JSONArray(allTags.toList()))
+    }
+
+    private fun validateFullBodyPose(pose: Pose) {
+        val shoulderConfidence = averageLikelihood(
+            pose.getPoseLandmark(PoseLandmark.LEFT_SHOULDER),
+            pose.getPoseLandmark(PoseLandmark.RIGHT_SHOULDER)
+        )
+        val hipConfidence = averageLikelihood(
+            pose.getPoseLandmark(PoseLandmark.LEFT_HIP),
+            pose.getPoseLandmark(PoseLandmark.RIGHT_HIP)
+        )
+        val kneeConfidence = averageLikelihood(
+            pose.getPoseLandmark(PoseLandmark.LEFT_KNEE),
+            pose.getPoseLandmark(PoseLandmark.RIGHT_KNEE)
+        )
+        val ankleConfidence = averageLikelihood(
+            pose.getPoseLandmark(PoseLandmark.LEFT_ANKLE),
+            pose.getPoseLandmark(PoseLandmark.RIGHT_ANKLE)
+        )
+        val visibleBodyScore = listOf(shoulderConfidence, hipConfidence, kneeConfidence, ankleConfidence)
+            .count { it >= 0.35f }
+
+        if (pose.allPoseLandmarks.size < 12 || shoulderConfidence < 0.35f || hipConfidence < 0.35f || visibleBodyScore < 3) {
+            throw AnalysisInputException("사람의 전신을 충분히 인식하지 못했어. 머리부터 발까지 보이는 사진으로 다시 촬영하거나 선택해줘.")
+        }
+    }
+
+    private fun validateSilhouetteMetrics(silhouetteJson: JSONObject) {
+        val shoulderWidth = silhouetteJson.optDouble("shoulder_width_mask", 0.0)
+        val hipWidth = silhouetteJson.optDouble("hip_width_mask", 0.0)
+        val thighWidth = silhouetteJson.optDouble("thigh_width_mask", 0.0)
+        val bodyHeight = silhouetteJson.optDouble("body_height_mask", 0.0)
+        val coverage = silhouetteJson.optDouble("coverage_ratio", 0.0)
+
+        if (bodyHeight <= 0.0 || coverage < 0.01 || shoulderWidth <= 0.0 || hipWidth <= 0.0 || thighWidth <= 0.0) {
+            throw AnalysisInputException("사람 실루엣 값이 거의 잡히지 않았어. 배경과 사람이 분리되고 전신이 보이는 사진으로 다시 선택해줘.")
+        }
     }
 
     private fun pointJson(landmark: PoseLandmark?): Any {
@@ -1156,8 +1247,8 @@ object PoseExtractionPipeline {
 
     private fun shoulderProfile(shoulderToHipRatio: Double): String {
         return when {
-            shoulderToHipRatio >= 1.4 -> "broad_relative_to_hip"
-            shoulderToHipRatio <= 1.08 -> "narrow_relative_to_hip"
+            shoulderToHipRatio >= 1.08 -> "broad_relative_to_hip"
+            shoulderToHipRatio <= 0.92 -> "narrow_relative_to_hip"
             else -> "balanced"
         }
     }
@@ -1165,8 +1256,8 @@ object PoseExtractionPipeline {
     private fun bodyDistribution(shoulderToHipRatio: Double): String {
         return when {
             shoulderToHipRatio == 0.0 -> "unknown"
-            shoulderToHipRatio >= 1.36 -> "upper_body_developed"
-            shoulderToHipRatio <= 1.10 -> "lower_body_developed"
+            shoulderToHipRatio >= 1.08 -> "upper_body_developed"
+            shoulderToHipRatio <= 0.92 -> "lower_body_developed"
             else -> "balanced"
         }
     }
@@ -1305,6 +1396,76 @@ object PoseExtractionPipeline {
         }
     }
 
+    private fun buildUserProfileJson(userBodyProfile: UserBodyProfile): JSONObject {
+        return JSONObject()
+            .put("height_cm", userBodyProfile.heightCm ?: JSONObject.NULL)
+            .put("weight_kg", userBodyProfile.weightKg ?: JSONObject.NULL)
+    }
+
+    private fun buildBodyMassJson(userBodyProfile: UserBodyProfile): JSONObject {
+        val heightCm = userBodyProfile.heightCm
+        val weightKg = userBodyProfile.weightKg
+        val bmi = if (heightCm != null && weightKg != null && heightCm > 0.0 && weightKg > 0.0) {
+            val heightM = heightCm / 100.0
+            weightKg / (heightM * heightM)
+        } else {
+            0.0
+        }
+
+        return JSONObject()
+            .put("bmi", bmi)
+            .put("bmi_band", bmiBand(bmi))
+            .put("height_band", heightBand(heightCm))
+    }
+
+    private fun bmiBand(bmi: Double): String {
+        return when {
+            bmi == 0.0 -> "unknown"
+            bmi < 18.5 -> "low_body_mass"
+            bmi < 23.0 -> "balanced_body_mass"
+            bmi < 25.0 -> "soft_full_body_mass"
+            else -> "full_body_mass"
+        }
+    }
+
+    private fun heightBand(heightCm: Double?): String {
+        val height = heightCm ?: return "unknown"
+        return when {
+            height <= 0.0 -> "unknown"
+            height < 160.0 -> "compact_height"
+            height <= 170.0 -> "average_height"
+            else -> "tall_height"
+        }
+    }
+
+    private fun profileTagForHeight(heightBand: String): String? {
+        return when (heightBand) {
+            "compact_height" -> "petite_proportion_friendly"
+            "average_height" -> "standard_length_friendly"
+            "tall_height" -> "long_length_friendly"
+            else -> null
+        }
+    }
+
+    private fun profileTagForBmi(bmiBand: String): String? {
+        return when (bmiBand) {
+            "low_body_mass" -> "slim_fit_friendly"
+            "balanced_body_mass" -> "regular_fit_friendly"
+            "soft_full_body_mass" -> "comfort_fit_friendly"
+            "full_body_mass" -> "relaxed_fit_friendly"
+            else -> null
+        }
+    }
+
+    private fun profileTagForFit(bmiBand: String, bodyVolume: String): String? {
+        return when {
+            bmiBand == "low_body_mass" && bodyVolume == "slim_volume" -> "volume_layering_recommended"
+            bmiBand in listOf("soft_full_body_mass", "full_body_mass") -> "clean_vertical_fit_recommended"
+            bodyVolume == "full_volume" -> "structured_balance_recommended"
+            else -> null
+        }
+    }
+
     private fun faceTag(faceShape: String, faceAspectRatio: Float): String? {
         val shapeTag = when (faceShape) {
             "round" -> "face_shape_round"
@@ -1343,10 +1504,10 @@ object PoseExtractionPipeline {
     private fun shoulderRatioBand(value: Double): String {
         return when {
             value == 0.0 -> "unknown"
-            value < 1.06 -> "strong_lower"
-            value < 1.14 -> "soft_lower"
-            value <= 1.28 -> "balanced"
-            value <= 1.36 -> "soft_upper"
+            value < 0.78 -> "strong_lower"
+            value < 0.92 -> "soft_lower"
+            value <= 1.08 -> "balanced"
+            value <= 1.18 -> "soft_upper"
             else -> "strong_upper"
         }
     }

@@ -1,6 +1,7 @@
 ﻿package com.example.mobilecapstone
 
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -27,7 +28,9 @@ import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Insights
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.Login
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -63,9 +66,14 @@ import androidx.compose.ui.unit.dp
 internal fun HistoryScreen(
     modifier: Modifier = Modifier,
     historyEntries: List<HistoryEntry>,
+    onRate: (String, RecommendationItem, Int) -> Unit,
+    onSelectRecommendation: (HistoryEntry, RecommendationItem) -> Unit,
+    onDeleteRecord: (HistoryEntry) -> Unit,
     onGoAnalysis: () -> Unit
 ) {
     val context = LocalContext.current
+    var pendingDeleteEntry by remember { mutableStateOf<HistoryEntry?>(null) }
+    var ratingTarget by remember { mutableStateOf<Pair<String, RecommendationItem>?>(null) }
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -76,14 +84,14 @@ internal fun HistoryScreen(
         ScreenHeroCard(
             icon = { Icon(Icons.Rounded.History, contentDescription = null) },
             title = "기록 화면",
-            description = "백엔드 저장이 붙기 전에도 세션 히스토리를 미리 확인할 수 있는 화면이야."
+            description = "로컬 분석 기록과 서버 추천 기록을 기록 ID로 매핑해서 확인할 수 있어요."
         )
 
         if (historyEntries.isEmpty()) {
             PlaceholderFeatureCard(
                 icon = { Icon(Icons.Rounded.Insights, contentDescription = null) },
-                title = "기록이 아직 없어",
-                description = "분석 결과 화면에서 분석을 실행하면 세션 히스토리가 여기에 추가돼."
+                title = "기록이 아직 없습니다",
+                description = "분석 결과 화면에서 분석을 실행하면 기록이 저장됩니다."
             )
             FilledTonalButton(
                 onClick = onGoAnalysis,
@@ -94,6 +102,9 @@ internal fun HistoryScreen(
             }
         } else {
             historyEntries.forEach { entry ->
+                val recordBitmap = remember(entry.imageUri) {
+                    entry.imageUri?.let { path -> BitmapFactory.decodeFile(path) }
+                }
                 ElevatedCard(
                     shape = RoundedCornerShape(24.dp),
                     colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)
@@ -102,9 +113,46 @@ internal fun HistoryScreen(
                         modifier = Modifier.padding(18.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text(assetLabel(entry.assetName), style = MaterialTheme.typography.titleLarge)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            IconButton(onClick = { pendingDeleteEntry = entry }) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Delete,
+                                    contentDescription = "기록 삭제",
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                        recordBitmap?.let { bitmap ->
+                            Image(
+                                bitmap = bitmap.asImageBitmap(),
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(180.dp)
+                                    .clip(RoundedCornerShape(18.dp))
+                            )
+                        }
+                        Text(entry.imageLabel, style = MaterialTheme.typography.titleLarge)
                         Text(
                             text = "${entry.createdAt} · ${tokenLabel(context, entry.frameType)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = buildString {
+                                append("기록 ID: ")
+                                append(entry.recordId.take(8))
+                                if (entry.heightCm != null || entry.weightKg != null) {
+                                    append(" · ")
+                                    append(entry.heightCm?.format(1) ?: "-")
+                                    append("cm / ")
+                                    append(entry.weightKg?.format(1) ?: "-")
+                                    append("kg")
+                                }
+                            },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -118,10 +166,136 @@ internal fun HistoryScreen(
                                 }
                             }
                         }
+                        if (entry.recommendations.isNotEmpty()) {
+                            HorizontalDivider()
+                            Text(
+                                text = "추천 세트",
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                            entry.recommendations.forEach { recommendation ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = buildString {
+                                            append(recommendation.title)
+                                            append(" · ")
+                                            append(recommendation.price)
+                                            recommendation.userRating?.let { rating ->
+                                                append(" · 내 별점 ")
+                                                append(rating)
+                                                append("점")
+                                            }
+                                            if (recommendation.totalDwellTimeMs > 0L) {
+                                                append(" · 체류 ")
+                                                append(recommendation.totalDwellTimeMs / 1000)
+                                                append("s")
+                                            }
+                                        },
+                                        modifier = Modifier.weight(1f),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    TextButton(onClick = { onSelectRecommendation(entry, recommendation) }) {
+                                        Text("상세")
+                                    }
+                                    TextButton(onClick = { ratingTarget = entry.recordId to recommendation }) {
+                                        Text("별점")
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
     }
+
+    pendingDeleteEntry?.let { entry ->
+        AlertDialog(
+            onDismissRequest = { pendingDeleteEntry = null },
+            title = { Text("기록을 삭제할까요?") },
+            text = {
+                Text(
+                    text = "삭제한 분석 기록은 다시 복구할 수 없습니다. 연결된 추천 기록도 함께 삭제됩니다.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        pendingDeleteEntry = null
+                        onDeleteRecord(entry)
+                    }
+                ) {
+                    Text("삭제")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeleteEntry = null }) {
+                    Text("취소")
+                }
+            },
+            shape = RoundedCornerShape(18.dp),
+            containerColor = MaterialTheme.colorScheme.surface
+        )
+    }
+
+    ratingTarget?.let { target ->
+        val recordId = target.first
+        val item = target.second
+        HistoryRatingDialog(
+            item = item,
+            onDismiss = { ratingTarget = null },
+            onSubmit = { rating ->
+                onRate(recordId, item, rating)
+                ratingTarget = null
+            }
+        )
+    }
 }
 
+@Composable
+private fun HistoryRatingDialog(
+    item: RecommendationItem,
+    onDismiss: () -> Unit,
+    onSubmit: (Int) -> Unit
+) {
+    var selectedRating by remember(item.id) { mutableStateOf(item.userRating ?: 5) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("별점 주기") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(item.title, style = MaterialTheme.typography.titleMedium)
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    (1..5).forEach { rating ->
+                        ChipButton(
+                            label = "${rating}점",
+                            selected = selectedRating == rating,
+                            onClick = { selectedRating = rating }
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onSubmit(selectedRating) }) {
+                Text("제출")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("취소")
+            }
+        },
+        shape = RoundedCornerShape(18.dp),
+        containerColor = MaterialTheme.colorScheme.surface
+    )
+}

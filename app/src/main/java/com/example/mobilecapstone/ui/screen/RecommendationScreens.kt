@@ -28,8 +28,10 @@ import androidx.compose.material.icons.rounded.Insights
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.Login
 import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -41,11 +43,15 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RangeSlider
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -64,6 +70,11 @@ internal fun RecommendationListScreen(
     modifier: Modifier = Modifier,
     summary: ResultSummary?,
     recommendations: List<RecommendationItem>,
+    filters: RecommendationFilterState,
+    colourOptions: List<String>,
+    tagPreferenceWeights: Map<String, Double>,
+    onFiltersChange: (RecommendationFilterState) -> Unit,
+    onSearch: () -> Unit,
     onSelect: (RecommendationItem) -> Unit,
     onGoAnalysis: () -> Unit
 ) {
@@ -95,6 +106,22 @@ internal fun RecommendationListScreen(
                 Text("분석 화면으로 이동")
             }
         } else {
+            RecommendationFilterCard(
+                filters = filters,
+                resultCount = recommendations.size,
+                colourOptions = colourOptions,
+                onFiltersChange = onFiltersChange,
+                onSearch = onSearch
+            )
+
+            if (recommendations.isEmpty()) {
+                PlaceholderFeatureCard(
+                    icon = { Icon(Icons.Rounded.Tune, contentDescription = null) },
+                    title = "조건에 맞는 상품이 없어",
+                    description = "가격 범위, 계절, 성별 조건을 조금 넓혀서 다시 검색해봐."
+                )
+            }
+
             recommendations.forEach { item ->
                 ElevatedCard(
                     modifier = Modifier
@@ -137,6 +164,36 @@ internal fun RecommendationListScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.primary
                         )
+                        Row(
+                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            SoftPill(text = item.brandName)
+                            SoftPill(text = item.productType)
+                            SoftPill(text = item.season)
+                            SoftPill(text = item.gender)
+                            SoftPill(text = item.baseColour)
+                            SoftPill(text = item.usage)
+                            SoftPill(text = item.fit)
+                            item.userRating?.let { userRating ->
+                                SoftPill(text = "내 별점 ${userRating}점")
+                            }
+                            if (item.totalDwellTimeMs > 0L) {
+                                SoftPill(text = "체류 ${item.totalDwellTimeMs / 1000}s")
+                            }
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = { onSelect(item) },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(16.dp)
+                            ) {
+                                Text("상세보기")
+                            }
+                        }
                     }
                 }
             }
@@ -145,13 +202,178 @@ internal fun RecommendationListScreen(
 }
 
 @Composable
+private fun RecommendationFilterCard(
+    filters: RecommendationFilterState,
+    resultCount: Int,
+    colourOptions: List<String>,
+    onFiltersChange: (RecommendationFilterState) -> Unit,
+    onSearch: () -> Unit
+) {
+    ElevatedCard(
+        shape = RoundedCornerShape(26.dp),
+        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("상품 검색 필터", style = MaterialTheme.typography.titleLarge)
+                    Text(
+                        text = "서버 DB 필드 기준 검색 조건",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                SoftPill(text = "${resultCount}개")
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = "가격대: ${filters.minPrice.formatWon()} ~ ${filters.maxPrice.formatWon()}",
+                    style = MaterialTheme.typography.titleMedium
+                )
+                RangeSlider(
+                    value = filters.minPrice.toFloat()..filters.maxPrice.toFloat(),
+                    onValueChange = { value ->
+                        onFiltersChange(
+                            filters.copy(
+                                minPrice = value.start.toInt(),
+                                maxPrice = value.endInclusive.toInt()
+                            )
+                        )
+                    },
+                    valueRange = 0f..500_000f,
+                    steps = 9
+                )
+            }
+
+            FilterChipRow(
+                title = "계절",
+                options = listOf("All", "Spring", "Summer", "Fall", "Winter"),
+                selected = filters.selectedSeason,
+                onSelect = { onFiltersChange(filters.copy(selectedSeason = it)) }
+            )
+
+            FilterChipRow(
+                title = "성별",
+                options = listOf("All", "Men", "Women"),
+                selected = filters.selectedGender,
+                onSelect = { onFiltersChange(filters.copy(selectedGender = it)) }
+            )
+
+            FilterChipRow(
+                title = "용도",
+                options = listOf("All", "Sports", "Fashion", "Casual"),
+                selected = filters.selectedUsage,
+                onSelect = { onFiltersChange(filters.copy(selectedUsage = it)) }
+            )
+
+            FilterChipRow(
+                title = "대표 색상",
+                options = listOf("All") + colourOptions,
+                selected = filters.selectedBaseColour,
+                onSelect = { onFiltersChange(filters.copy(selectedBaseColour = it)) }
+            )
+
+            FilterChipRow(
+                title = "브랜드",
+                options = listOf("All", "Nike", "Studio Sajo"),
+                selected = filters.selectedBrandName,
+                onSelect = { onFiltersChange(filters.copy(selectedBrandName = it)) }
+            )
+
+            FilterChipRow(
+                title = "상품 종류",
+                options = listOf("All", "Tshirts", "Jackets", "Trousers", "Co-ords"),
+                selected = filters.selectedArticleType,
+                onSelect = { onFiltersChange(filters.copy(selectedArticleType = it)) }
+            )
+
+            FilterChipRow(
+                title = "핏",
+                options = listOf("All", "Regular Fit", "Slim Fit", "Comfort Fit"),
+                selected = filters.selectedFit,
+                onSelect = { onFiltersChange(filters.copy(selectedFit = it)) }
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Checkbox(
+                    checked = filters.discountedOnly,
+                    onCheckedChange = { checked ->
+                        onFiltersChange(filters.copy(discountedOnly = checked))
+                    }
+                )
+                Text("할인 상품만", modifier = Modifier.weight(1f))
+            }
+
+            Button(
+                onClick = onSearch,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp)
+            ) {
+                Text("Mock 서버 검색 결과 저장")
+            }
+        }
+    }
+}
+
+@Composable
+private fun FilterChipRow(
+    title: String,
+    options: List<String>,
+    selected: String,
+    onSelect: (String) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(title, style = MaterialTheme.typography.titleMedium)
+        Row(
+            modifier = Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            options.forEach { option ->
+                ChipButton(
+                    label = option,
+                    selected = selected == option,
+                    onClick = { onSelect(option) }
+                )
+            }
+        }
+    }
+}
+
+private fun Int.formatWon(): String {
+    return "%,d원".format(this)
+}
+
+@Composable
 internal fun RecommendationDetailScreen(
     modifier: Modifier = Modifier,
     item: RecommendationItem?,
     summary: ResultSummary?,
+    onDwellMeasured: (RecommendationItem, Long) -> Unit,
     onBackToList: () -> Unit
 ) {
     val context = LocalContext.current
+    val enterTime = remember(item?.id) { System.currentTimeMillis() }
+
+    DisposableEffect(item?.id) {
+        onDispose {
+            item?.let { selected ->
+                onDwellMeasured(selected, System.currentTimeMillis() - enterTime)
+            }
+        }
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -191,6 +413,10 @@ internal fun RecommendationDetailScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 SoftPill(text = item.price)
+                item.userRating?.let { SoftPill(text = "내 별점 ${it}점") }
+                if (item.totalDwellTimeMs > 0L) {
+                    SoftPill(text = "누적 체류 ${item.totalDwellTimeMs / 1000}s")
+                }
             }
         }
 
@@ -207,6 +433,16 @@ internal fun RecommendationDetailScreen(
                 HorizontalDivider()
                 Text("스타일 팁", style = MaterialTheme.typography.titleMedium)
                 Text(item.styleTip, style = MaterialTheme.typography.bodyMedium)
+                HorizontalDivider()
+                Text("상품 태그", style = MaterialTheme.typography.titleMedium)
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    item.matchedTags.forEach { tag ->
+                        SoftPill(text = tokenLabel(context, tag))
+                    }
+                }
                 if (summary != null) {
                     HorizontalDivider()
                     Text("현재 분석 기준", style = MaterialTheme.typography.titleMedium)
