@@ -90,9 +90,6 @@ internal fun FashionCapstoneApp() {
     var authMessage by remember { mutableStateOf<String?>(null) }
     var authLoading by remember { mutableStateOf(false) }
 
-    var notificationsEnabled by remember { mutableStateOf(true) }
-    var wifiOnlySync by remember { mutableStateOf(true) }
-
     val rootTabs = remember {
         listOf(
             NavItem(AppScreen.Home, "홈") {
@@ -694,18 +691,21 @@ internal fun FashionCapstoneApp() {
             AppScreen.Settings -> SettingsScreen(
                 modifier = Modifier.padding(innerPadding),
                 accountName = accountName,
-                notificationsEnabled = notificationsEnabled,
-                wifiOnlySync = wifiOnlySync,
-                onNotificationsChange = {
-                    notificationsEnabled = it
-                },
-                onWifiOnlySyncChange = {
-                    wifiOnlySync = it
-                },
                 onEditProfile = {
                     profileEditHeightInput = profileHeightInput
                     profileEditWeightInput = profileWeightInput
                     currentScreen = AppScreen.ProfileEdit
+                },
+                onDeleteAccount = {
+                    accountName = "사용자"
+                    loginEmail = ""
+                    loginPassword = ""
+                    profileHeightInput = ""
+                    profileWeightInput = ""
+                    profileEditHeightInput = ""
+                    profileEditWeightInput = ""
+                    authMessage = null
+                    currentScreen = AppScreen.Login
                 },
                 onLogout = {
                     currentScreen = AppScreen.Login

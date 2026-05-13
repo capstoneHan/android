@@ -26,10 +26,12 @@ import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.Checkroom
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Insights
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.Login
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -66,13 +68,12 @@ import androidx.compose.ui.unit.dp
 internal fun SettingsScreen(
     modifier: Modifier = Modifier,
     accountName: String,
-    notificationsEnabled: Boolean,
-    wifiOnlySync: Boolean,
-    onNotificationsChange: (Boolean) -> Unit,
-    onWifiOnlySyncChange: (Boolean) -> Unit,
     onEditProfile: () -> Unit,
+    onDeleteAccount: () -> Unit,
     onLogout: () -> Unit
 ) {
+    var showDeleteAccountDialog by remember { mutableStateOf(false) }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -107,18 +108,18 @@ internal fun SettingsScreen(
                     Text("내 정보 수정")
                 }
                 HorizontalDivider()
-                SettingRow(
-                    title = "알림 받기",
-                    description = "분석 완료나 추천 업데이트 알림",
-                    checked = notificationsEnabled,
-                    onCheckedChange = onNotificationsChange
+                PlaceholderFeatureCard(
+                    icon = { Icon(Icons.Rounded.Info, contentDescription = null) },
+                    title = "개인정보 안내",
+                    description = "사진은 서버로 전송하지 않고 기기 내 분석에 사용됩니다. 추천 요청에는 분석 태그, 필터 값, 로컬에서 계산한 태그 가중치만 활용됩니다."
                 )
-                SettingRow(
-                    title = "Wi‑Fi에서만 동기화",
-                    description = "오프라인 결과 업로드 시 셀룰러 사용 제한",
-                    checked = wifiOnlySync,
-                    onCheckedChange = onWifiOnlySyncChange
-                )
+                OutlinedButton(
+                    onClick = { showDeleteAccountDialog = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp)
+                ) {
+                    Text("회원 탈퇴")
+                }
                 OutlinedButton(
                     onClick = onLogout,
                     modifier = Modifier.fillMaxWidth(),
@@ -128,6 +129,37 @@ internal fun SettingsScreen(
                 }
             }
         }
+    }
+
+    if (showDeleteAccountDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteAccountDialog = false },
+            icon = { Icon(Icons.Rounded.Info, contentDescription = null) },
+            title = { Text("회원 탈퇴를 진행할까요?") },
+            text = {
+                Text(
+                    text = "현재 프로토타입에서는 서버 계정 삭제 대신 앱의 로그인 상태를 초기화합니다.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDeleteAccountDialog = false
+                        onDeleteAccount()
+                    }
+                ) {
+                    Text("탈퇴")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteAccountDialog = false }) {
+                    Text("취소")
+                }
+            },
+            shape = RoundedCornerShape(18.dp),
+            containerColor = MaterialTheme.colorScheme.surface
+        )
     }
 }
 
