@@ -1,6 +1,8 @@
 *.iml
 .gradle
 /.gradle/
+.gradle-user/
+.kotlin/
 /local.properties
 local.properties
 /.idea/
@@ -16,3 +18,15 @@ local.properties
 /captures
 .externalNativeBuild
 .cxx
+
+# Backend project
+/demo/
+/demo.zip
+*.zip
+
+# Android artifacts
+*.apk
+*.aab
+
+# ML / large model files
+*.tflite

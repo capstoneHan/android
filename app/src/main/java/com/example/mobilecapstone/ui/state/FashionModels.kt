@@ -23,8 +23,10 @@ internal data class RecommendationItem(
     val productType: String = "",
     val fit: String = "",
     val imageUrl: String = "",
+    val productTags: List<String> = emptyList(),
     val matchedTags: List<String> = emptyList(),
     val matchScore: Double = 0.0,
+    val topRecommendation: Boolean = false,
     val userRating: Int? = null,
     val totalDwellTimeMs: Long = 0L
 )
@@ -32,13 +34,14 @@ internal data class RecommendationItem(
 internal data class RecommendationFilterState(
     val minPrice: Int = 0,
     val maxPrice: Int = 500_000,
-    val selectedSeason: String = "All",
-    val selectedGender: String = "All",
-    val selectedUsage: String = "All",
-    val selectedBaseColour: String = "All",
-    val selectedBrandName: String = "All",
-    val selectedArticleType: String = "All",
-    val selectedFit: String = "All",
+    val selectedSeason: Set<String> = setOf("All"),
+    val selectedGender: Set<String> = setOf("All"),
+    val selectedUsage: Set<String> = setOf("All"),
+    val selectedBaseColour: Set<String> = setOf("All"),
+    val selectedBrandName: Set<String> = setOf("All"),
+    val selectedArticleType: Set<String> = setOf("All"),
+    val selectedStyleTag: Set<String> = setOf("All"),
+    val selectedFit: Set<String> = setOf("All"),
     val discountedOnly: Boolean = false
 ) {
     fun toServerQuery(
@@ -48,13 +51,22 @@ internal data class RecommendationFilterState(
         return JSONObject()
             .put("min_price", minPrice)
             .put("max_price", maxPrice)
-            .put("season", selectedSeason.takeUnless { it == "All" } ?: JSONObject.NULL)
-            .put("gender", selectedGender.takeUnless { it == "All" } ?: JSONObject.NULL)
-            .put("usage", selectedUsage.takeUnless { it == "All" } ?: JSONObject.NULL)
-            .put("base_colour", selectedBaseColour.takeUnless { it == "All" } ?: JSONObject.NULL)
-            .put("brand_name", selectedBrandName.takeUnless { it == "All" } ?: JSONObject.NULL)
-            .put("article_type", selectedArticleType.takeUnless { it == "All" } ?: JSONObject.NULL)
-            .put("fit", selectedFit.takeUnless { it == "All" } ?: JSONObject.NULL)
+            .put("season", selectedSeason.singleServerValue() ?: JSONObject.NULL)
+            .put("gender", selectedGender.singleServerValue() ?: JSONObject.NULL)
+            .put("usage", selectedUsage.singleServerValue() ?: JSONObject.NULL)
+            .put("base_colour", selectedBaseColour.singleServerValue() ?: JSONObject.NULL)
+            .put("brand_name", selectedBrandName.singleServerValue() ?: JSONObject.NULL)
+            .put("article_type", selectedArticleType.singleServerValue() ?: JSONObject.NULL)
+            .put("style_tag", selectedStyleTag.singleServerValue() ?: JSONObject.NULL)
+            .put("fit", selectedFit.singleServerValue() ?: JSONObject.NULL)
+            .put("seasons", JSONArray(selectedSeason.serverValues()))
+            .put("genders", JSONArray(selectedGender.serverValues()))
+            .put("usages", JSONArray(selectedUsage.serverValues()))
+            .put("base_colours", JSONArray(selectedBaseColour.serverValues()))
+            .put("brand_names", JSONArray(selectedBrandName.serverValues()))
+            .put("article_types", JSONArray(selectedArticleType.serverValues()))
+            .put("style_tags_filter", JSONArray(selectedStyleTag.serverValues()))
+            .put("fits", JSONArray(selectedFit.serverValues()))
             .put("discounted_only", discountedOnly)
             .put(
                 "tag_preferences",
@@ -67,6 +79,40 @@ internal data class RecommendationFilterState(
                 )
             )
             .put("style_tags", JSONArray(tags))
+    }
+}
+
+internal fun Set<String>.serverValues(): List<String> {
+    return filter { it != "All" }
+}
+
+internal fun Set<String>.singleServerValue(): String? {
+    return serverValues().singleOrNull()
+}
+
+internal fun Set<String>.containsFilterValue(value: String): Boolean {
+    return contains("All") || contains(value)
+}
+
+internal fun Set<String>.containsAnyFilterValue(values: Iterable<String>): Boolean {
+    return contains("All") || values.any { contains(it) }
+}
+
+internal fun Set<String>.toggleFilterOption(option: String, options: List<String>): Set<String> {
+    if (option == "All") return setOf("All")
+
+    val concreteOptions = options.filter { it != "All" }.toSet()
+    val selected = (this - "All").toMutableSet()
+    if (selected.contains(option)) {
+        selected.remove(option)
+    } else {
+        selected.add(option)
+    }
+
+    return if (selected.isEmpty() || concreteOptions.all { selected.contains(it) }) {
+        setOf("All")
+    } else {
+        selected.toSet()
     }
 }
 
@@ -233,6 +279,47 @@ internal fun assetLabel(assetName: String): String {
 }
 
 internal fun tokenLabel(context: Context, value: String): String {
+    val normalized = value.trim().lowercase(Locale.US).replace(" ", "_").replace("-", "_")
+    val directLabel = when (normalized) {
+        "all" -> "전체"
+        "men" -> "남성"
+        "women" -> "여성"
+        "unisex" -> "공용"
+        "spring" -> "봄"
+        "summer" -> "여름"
+        "fall", "autumn" -> "가을"
+        "winter" -> "겨울"
+        "casual" -> "캐주얼"
+        "sports" -> "스포츠"
+        "fashion" -> "패션"
+        "tshirts" -> "티셔츠"
+        "shirts" -> "셔츠"
+        "tops" -> "상의"
+        "jeans" -> "청바지"
+        "trousers" -> "팬츠"
+        "track_pants" -> "트랙 팬츠"
+        "shorts" -> "반바지"
+        "skirts" -> "스커트"
+        "jackets" -> "재킷"
+        "coats" -> "코트"
+        "blazers" -> "블레이저"
+        "black" -> "블랙"
+        "white" -> "화이트"
+        "blue" -> "블루"
+        "beige" -> "베이지"
+        "lavender" -> "라벤더"
+        "red" -> "레드"
+        "green" -> "그린"
+        "grey", "gray" -> "그레이"
+        "regular_fit" -> "레귤러 핏"
+        "slim_fit" -> "슬림 핏"
+        "comfort_fit" -> "컴포트 핏"
+        "sajo_catalog" -> "사조 카탈로그"
+        "na" -> "정보 없음"
+        else -> null
+    }
+    if (directLabel != null) return directLabel
+
     val resId = when (value) {
         "defined_frame" -> R.string.token_defined_frame
         "balanced_frame" -> R.string.token_balanced_frame

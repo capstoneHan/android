@@ -22,16 +22,32 @@ internal fun buildRecommendationMocks(
     }
 
     return mockProductCatalog(context, summary, shoulderHint, legHint).filter { item ->
-        item.rawPrice in filters.minPrice..filters.maxPrice &&
-            (filters.selectedSeason == "All" || item.season == filters.selectedSeason || item.season == "All") &&
-            (filters.selectedGender == "All" || item.gender == filters.selectedGender) &&
-            (filters.selectedUsage == "All" || item.usage == filters.selectedUsage) &&
-            (filters.selectedBaseColour == "All" || item.baseColour == filters.selectedBaseColour) &&
-            (filters.selectedBrandName == "All" || item.brandName == filters.selectedBrandName) &&
-            (filters.selectedArticleType == "All" || item.productType == filters.selectedArticleType) &&
-            (filters.selectedFit == "All" || item.fit == filters.selectedFit) &&
-            (!filters.discountedOnly || item.discountedPrice < item.rawPrice)
+        item.matchesRecommendationFilters(filters)
     }
+}
+
+internal fun filterRecommendationItems(
+    items: List<RecommendationItem>,
+    filters: RecommendationFilterState
+): List<RecommendationItem> {
+    return items.filter { item -> item.matchesRecommendationFilters(filters) }
+}
+
+private fun RecommendationItem.matchesRecommendationFilters(filters: RecommendationFilterState): Boolean {
+    return rawPrice in filters.minPrice..filters.maxPrice &&
+        (selectedSeasonMatches(filters) || season == "All") &&
+        filters.selectedGender.containsFilterValue(gender) &&
+        filters.selectedUsage.containsFilterValue(usage) &&
+        filters.selectedBaseColour.containsFilterValue(baseColour) &&
+        filters.selectedBrandName.containsFilterValue(brandName) &&
+        filters.selectedArticleType.containsFilterValue(productType) &&
+        filters.selectedStyleTag.containsAnyFilterValue(matchedTags + productTags) &&
+        filters.selectedFit.containsFilterValue(fit) &&
+        (!filters.discountedOnly || discountedPrice < rawPrice)
+}
+
+private fun RecommendationItem.selectedSeasonMatches(filters: RecommendationFilterState): Boolean {
+    return filters.selectedSeason.containsFilterValue(season)
 }
 
 private fun mockProductCatalog(

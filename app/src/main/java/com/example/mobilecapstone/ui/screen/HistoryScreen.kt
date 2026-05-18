@@ -27,6 +27,7 @@ import androidx.compose.material.icons.rounded.Checkroom
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Insights
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.Login
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Tune
@@ -74,6 +75,7 @@ internal fun HistoryScreen(
     val context = LocalContext.current
     var pendingDeleteEntry by remember { mutableStateOf<HistoryEntry?>(null) }
     var ratingTarget by remember { mutableStateOf<Pair<String, RecommendationItem>?>(null) }
+    var expandedRecommendationSets by remember { mutableStateOf(setOf<String>()) }
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -167,37 +169,73 @@ internal fun HistoryScreen(
                             }
                         }
                         if (entry.recommendations.isNotEmpty()) {
+                            val recommendationsExpanded = expandedRecommendationSets.contains(entry.recordId)
                             HorizontalDivider()
-                            Text(
-                                text = "추천 세트",
-                                style = MaterialTheme.typography.titleMedium
-                            )
-                            entry.recommendations.forEach { recommendation ->
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
+                                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                     Text(
-                                        text = buildString {
-                                            append(recommendation.title)
-                                            append(" · ")
-                                            append(recommendation.price)
-                                            recommendation.userRating?.let { rating ->
-                                                append(" · 내 별점 ")
-                                                append(rating)
-                                                append("점")
-                                            }
-                                        },
-                                        modifier = Modifier.weight(1f),
-                                        style = MaterialTheme.typography.bodyMedium,
+                                        text = "추천 세트",
+                                        style = MaterialTheme.typography.titleMedium
+                                    )
+                                    Text(
+                                        text = "${entry.recommendations.size}개 상품",
+                                        style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
-                                    TextButton(onClick = { onSelectRecommendation(entry, recommendation) }) {
-                                        Text("상세")
+                                }
+                                TextButton(
+                                    onClick = {
+                                        expandedRecommendationSets =
+                                            if (recommendationsExpanded) {
+                                                expandedRecommendationSets - entry.recordId
+                                            } else {
+                                                expandedRecommendationSets + entry.recordId
+                                            }
                                     }
-                                    TextButton(onClick = { ratingTarget = entry.recordId to recommendation }) {
-                                        Text("별점")
+                                ) {
+                                    Text(if (recommendationsExpanded) "접기" else "펼치기")
+                                    Icon(
+                                        imageVector = if (recommendationsExpanded) {
+                                            Icons.Rounded.KeyboardArrowUp
+                                        } else {
+                                            Icons.Rounded.KeyboardArrowDown
+                                        },
+                                        contentDescription = null
+                                    )
+                                }
+                            }
+                            if (recommendationsExpanded) {
+                                entry.recommendations.forEach { recommendation ->
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = buildString {
+                                                append(recommendation.title)
+                                                append(" · ")
+                                                append(recommendation.price)
+                                                recommendation.userRating?.let { rating ->
+                                                    append(" · 내 별점 ")
+                                                    append(rating)
+                                                    append("점")
+                                                }
+                                            },
+                                            modifier = Modifier.weight(1f),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        TextButton(onClick = { onSelectRecommendation(entry, recommendation) }) {
+                                            Text("상세")
+                                        }
+                                        TextButton(onClick = { ratingTarget = entry.recordId to recommendation }) {
+                                            Text("별점")
+                                        }
                                     }
                                 }
                             }

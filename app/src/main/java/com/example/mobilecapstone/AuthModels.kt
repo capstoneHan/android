@@ -6,7 +6,7 @@ import retrofit2.http.Body
 import retrofit2.http.POST
 
 
-private const val BASE_URL = "http://192.100.10.100:8080/" // 본인 ip로 실행
+private const val BASE_URL = "http://223.194.155.182:8080/" // 본인 ip로 실행
 internal data class RegisterRequest(
     val username: String,
     val password: String,
@@ -23,6 +23,7 @@ internal data class LoginRequest(
 internal data class AuthResponse(
     val success: Boolean,
     val message: String,
+    val userId: Long? = null,
     val username: String? = null,
     val height: Int? = null,
     val weight: Int? = null

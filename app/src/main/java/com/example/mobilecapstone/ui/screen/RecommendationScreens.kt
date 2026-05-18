@@ -1,6 +1,7 @@
 ﻿package com.example.mobilecapstone
 
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -52,6 +53,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -60,11 +62,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.net.URL
 @Composable
 internal fun RecommendationListScreen(
     modifier: Modifier = Modifier,
@@ -72,6 +78,7 @@ internal fun RecommendationListScreen(
     recommendations: List<RecommendationItem>,
     filters: RecommendationFilterState,
     colourOptions: List<String>,
+    styleTagOptions: List<String>,
     tagPreferenceWeights: Map<String, Double>,
     onFiltersChange: (RecommendationFilterState) -> Unit,
     onSelect: (RecommendationItem) -> Unit,
@@ -112,6 +119,7 @@ internal fun RecommendationListScreen(
                     filters = filters,
                     resultCount = recommendations.size,
                     colourOptions = colourOptions,
+                    styleTagOptions = styleTagOptions,
                     onFiltersChange = onFiltersChange
                 )
 
@@ -124,74 +132,93 @@ internal fun RecommendationListScreen(
                 }
 
                 recommendations.forEach { item ->
-                    ElevatedCard(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onSelect(item) },
-                        shape = RoundedCornerShape(26.dp),
-                        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(18.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        ElevatedCard(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onSelect(item) },
+                            shape = RoundedCornerShape(26.dp),
+                            colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)
                         ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.Top
+                            Column(
+                                modifier = Modifier.padding(18.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                Column(
-                                    modifier = Modifier.weight(1f),
-                                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Text(
-                                        text = item.title,
-                                        style = MaterialTheme.typography.titleLarge
-                                    )
-                                    Text(
-                                        text = item.subtitle,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                                SoftPill(text = item.price)
-                            }
-                            Text(
-                                text = item.description,
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                            Text(
-                                text = item.styleTip,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            Row(
-                                modifier = Modifier.horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                SoftPill(text = item.brandName)
-                                SoftPill(text = item.productType)
-                                SoftPill(text = item.season)
-                                SoftPill(text = item.gender)
-                                SoftPill(text = item.baseColour)
-                                SoftPill(text = item.usage)
-                                SoftPill(text = item.fit)
-                                item.userRating?.let { userRating ->
-                                    SoftPill(text = "내 별점 ${userRating}점")
-                                }
-                            }
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                OutlinedButton(
-                                    onClick = { onSelect(item) },
+                                RecommendationNetworkImage(
+                                    imageUrl = item.imageUrl,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(190.dp)
+                                        .clip(RoundedCornerShape(18.dp))
+                                )
+                                Row(
                                     modifier = Modifier.fillMaxWidth(),
-                                    shape = RoundedCornerShape(16.dp)
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.Top
                                 ) {
-                                    Text("상세보기")
+                                    Column(
+                                        modifier = Modifier.weight(1f),
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Text(
+                                            text = localizedProductTitle(context, item),
+                                            style = MaterialTheme.typography.titleLarge
+                                        )
+                                        Text(
+                                            text = localizedProductSubtitle(context, item),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    SoftPill(text = item.price)
+                                }
+                                Text(
+                                    text = localizedDescription(item),
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                                Text(
+                                    text = localizedStyleTip(item),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Row(
+                                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    SoftPill(text = tokenLabel(context, item.brandName))
+                                    SoftPill(text = tokenLabel(context, item.productType))
+                                    SoftPill(text = tokenLabel(context, item.season))
+                                    SoftPill(text = tokenLabel(context, item.gender))
+                                    SoftPill(text = tokenLabel(context, item.baseColour))
+                                    SoftPill(text = tokenLabel(context, item.usage))
+                                    SoftPill(text = tokenLabel(context, item.fit))
+                                    item.userRating?.let { userRating ->
+                                        SoftPill(text = "내 별점 ${userRating}점")
+                                    }
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    OutlinedButton(
+                                        onClick = { onSelect(item) },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(16.dp)
+                                    ) {
+                                        Text("상세보기")
+                                    }
                                 }
                             }
+                        }
+                        if (item.topRecommendation) {
+                            Surface(
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(14.dp)
+                                    .size(13.dp),
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.error
+                            ) {}
                         }
                     }
                 }
@@ -225,6 +252,7 @@ private fun RecommendationFilterCard(
     filters: RecommendationFilterState,
     resultCount: Int,
     colourOptions: List<String>,
+    styleTagOptions: List<String>,
     onFiltersChange: (RecommendationFilterState) -> Unit
 ) {
     var pendingPriceRange by remember(filters.minPrice, filters.maxPrice) {
@@ -287,50 +315,57 @@ private fun RecommendationFilterCard(
                 title = "계절",
                 options = listOf("All", "Spring", "Summer", "Fall", "Winter"),
                 selected = filters.selectedSeason,
-                onSelect = { onFiltersChange(filters.copy(selectedSeason = it)) }
+                onSelect = { option, options ->
+                    onFiltersChange(filters.copy(selectedSeason = filters.selectedSeason.toggleFilterOption(option, options)))
+                }
             )
 
             FilterChipRow(
                 title = "성별",
                 options = listOf("All", "Men", "Women"),
                 selected = filters.selectedGender,
-                onSelect = { onFiltersChange(filters.copy(selectedGender = it)) }
+                onSelect = { option, options ->
+                    onFiltersChange(filters.copy(selectedGender = filters.selectedGender.toggleFilterOption(option, options)))
+                }
             )
 
             FilterChipRow(
                 title = "용도",
                 options = listOf("All", "Sports", "Fashion", "Casual"),
                 selected = filters.selectedUsage,
-                onSelect = { onFiltersChange(filters.copy(selectedUsage = it)) }
+                onSelect = { option, options ->
+                    onFiltersChange(filters.copy(selectedUsage = filters.selectedUsage.toggleFilterOption(option, options)))
+                }
             )
 
             FilterChipRow(
                 title = "대표 색상",
                 options = listOf("All") + colourOptions,
                 selected = filters.selectedBaseColour,
-                onSelect = { onFiltersChange(filters.copy(selectedBaseColour = it)) }
-            )
-
-            FilterChipRow(
-                title = "브랜드",
-                options = listOf("All", "Nike", "Studio Sajo"),
-                selected = filters.selectedBrandName,
-                onSelect = { onFiltersChange(filters.copy(selectedBrandName = it)) }
+                onSelect = { option, options ->
+                    onFiltersChange(filters.copy(selectedBaseColour = filters.selectedBaseColour.toggleFilterOption(option, options)))
+                }
             )
 
             FilterChipRow(
                 title = "상품 종류",
-                options = listOf("All", "Tshirts", "Jackets", "Trousers", "Co-ords"),
+                options = listOf("All", "Tshirts", "Shirts", "Jeans", "Trousers", "Shorts", "Track Pants", "Jackets", "Coats"),
                 selected = filters.selectedArticleType,
-                onSelect = { onFiltersChange(filters.copy(selectedArticleType = it)) }
+                onSelect = { option, options ->
+                    onFiltersChange(filters.copy(selectedArticleType = filters.selectedArticleType.toggleFilterOption(option, options)))
+                }
             )
 
-            FilterChipRow(
-                title = "핏",
-                options = listOf("All", "Regular Fit", "Slim Fit", "Comfort Fit"),
-                selected = filters.selectedFit,
-                onSelect = { onFiltersChange(filters.copy(selectedFit = it)) }
-            )
+            if (styleTagOptions.isNotEmpty()) {
+                FilterChipRow(
+                    title = "분석 태그",
+                    options = listOf("All") + styleTagOptions,
+                    selected = filters.selectedStyleTag,
+                    onSelect = { option, options ->
+                        onFiltersChange(filters.copy(selectedStyleTag = filters.selectedStyleTag.toggleFilterOption(option, options)))
+                    }
+                )
+            }
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -354,8 +389,8 @@ private fun RecommendationFilterCard(
 private fun FilterChipRow(
     title: String,
     options: List<String>,
-    selected: String,
-    onSelect: (String) -> Unit
+    selected: Set<String>,
+    onSelect: (String, List<String>) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(title, style = MaterialTheme.typography.titleMedium)
@@ -366,8 +401,8 @@ private fun FilterChipRow(
             options.forEach { option ->
                 ChipButton(
                     label = option,
-                    selected = selected == option,
-                    onClick = { onSelect(option) }
+                    selected = selected.contains(option),
+                    onClick = { onSelect(option, options) }
                 )
             }
         }
@@ -382,6 +417,80 @@ private fun Int.roundPriceStep(): Int {
     return ((this + 500) / 1_000 * 1_000).coerceIn(0, 500_000)
 }
 
+private fun localizedProductTitle(context: android.content.Context, item: RecommendationItem): String {
+    val color = tokenLabel(context, item.baseColour)
+    val type = tokenLabel(context, item.productType)
+    val id = item.id.takeIf { it.isNotBlank() } ?: item.title
+    return listOf(color, type)
+        .filter { it.isNotBlank() && it != "NA" && it != "All" }
+        .joinToString(" ")
+        .ifBlank { item.title.ifBlank { "추천 상품" } } + " #$id"
+}
+
+private fun localizedProductSubtitle(context: android.content.Context, item: RecommendationItem): String {
+    return listOf(item.brandName, item.productType, item.gender, item.baseColour, item.season)
+        .map { tokenLabel(context, it) }
+        .filter { it.isNotBlank() && it != "All" && it != "NA" }
+        .joinToString(" - ")
+}
+
+private fun localizedDescription(item: RecommendationItem): String {
+    if (item.description.isBlank() || item.description == "Recommended from backend product catalog.") {
+        return "분석 태그와 개인화 가중치를 기준으로 추천된 상품입니다."
+    }
+    return item.description
+}
+
+private fun localizedStyleTip(item: RecommendationItem): String {
+    if (item.styleTip.isBlank() || item.styleTip == "Matched with analysis tags and local personalization weights.") {
+        return "색상, 계절, 상품 종류가 현재 분석 결과와 잘 맞는 후보입니다."
+    }
+    return item.styleTip
+}
+
+@Composable
+private fun RecommendationNetworkImage(
+    imageUrl: String,
+    modifier: Modifier = Modifier
+) {
+    var bitmap by remember(imageUrl) { mutableStateOf<Bitmap?>(null) }
+
+    LaunchedEffect(imageUrl) {
+        bitmap = null
+        if (imageUrl.isBlank()) return@LaunchedEffect
+
+        bitmap = withContext(Dispatchers.IO) {
+            runCatching {
+                URL(imageUrl).openStream().use { input ->
+                    BitmapFactory.decodeStream(input)
+                }
+            }.getOrNull()
+        }
+    }
+
+    if (bitmap != null) {
+        Image(
+            bitmap = bitmap!!.asImageBitmap(),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = modifier
+        )
+    } else {
+        Surface(
+            modifier = modifier,
+            color = MaterialTheme.colorScheme.surfaceVariant
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = Icons.Rounded.Checkroom,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
 @Composable
 internal fun RecommendationDetailScreen(
     modifier: Modifier = Modifier,
@@ -393,6 +502,8 @@ internal fun RecommendationDetailScreen(
     val context = LocalContext.current
     val enterTime = remember(item?.id) { System.currentTimeMillis() }
 
+    // TODO: When backend product detail is ready, load the canonical product
+    // detail by item.id before rendering this screen. Keep dwell/rating local.
     DisposableEffect(item?.id) {
         onDispose {
             item?.let { selected ->
@@ -432,10 +543,17 @@ internal fun RecommendationDetailScreen(
                 modifier = Modifier.padding(22.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
+                RecommendationNetworkImage(
+                    imageUrl = item.imageUrl,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(320.dp)
+                        .clip(RoundedCornerShape(22.dp))
+                )
                 SoftPill(text = "추천 상세 화면")
-                Text(text = item.title, style = MaterialTheme.typography.headlineLarge)
+                Text(text = localizedProductTitle(context, item), style = MaterialTheme.typography.headlineLarge)
                 Text(
-                    text = item.subtitle,
+                    text = localizedProductSubtitle(context, item),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -453,10 +571,10 @@ internal fun RecommendationDetailScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text("추천 이유", style = MaterialTheme.typography.titleLarge)
-                Text(item.description, style = MaterialTheme.typography.bodyMedium)
+                Text(localizedDescription(item), style = MaterialTheme.typography.bodyMedium)
                 HorizontalDivider()
                 Text("스타일 팁", style = MaterialTheme.typography.titleMedium)
-                Text(item.styleTip, style = MaterialTheme.typography.bodyMedium)
+                Text(localizedStyleTip(item), style = MaterialTheme.typography.bodyMedium)
                 HorizontalDivider()
                 Text("상품 태그", style = MaterialTheme.typography.titleMedium)
                 Row(
