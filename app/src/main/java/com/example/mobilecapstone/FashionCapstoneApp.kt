@@ -54,6 +54,7 @@ internal fun FashionCapstoneApp() {
     var uiState by remember { mutableStateOf(PipelineUiState()) }
     var currentRecordId by remember { mutableStateOf<String?>(null) }
     var recommendationFilters by remember { mutableStateOf(RecommendationFilterState()) }
+    var serverRecommendations by remember { mutableStateOf<List<RecommendationItem>?>(null) }
     var selectedRecommendation by remember { mutableStateOf<RecommendationItem?>(null) }
     var selectedRecommendationRecordId by remember { mutableStateOf<String?>(null) }
     var recommendationDetailReturnScreen by remember { mutableStateOf(AppScreen.RecommendationList) }
@@ -72,6 +73,7 @@ internal fun FashionCapstoneApp() {
     val tagPreferences by tagPreferenceDao.observeAll().collectAsState(initial = emptyList())
 
     var accountName by remember { mutableStateOf("사용자") }
+    var currentUserId by remember { mutableStateOf<Long?>(null) }
     var loginEmail by remember { mutableStateOf("") }
     var loginPassword by remember { mutableStateOf("") }
     var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
@@ -161,9 +163,66 @@ internal fun FashionCapstoneApp() {
     val tagPreferenceWeights = remember(tagPreferences) {
         tagPreferences.associate { it.tag to it.weight }
     }
-    val recommendations = remember(summary, recommendationFilters, currentRecordId, feedbackByProduct) {
+    LaunchedEffect(summary, tagPreferenceWeights, currentRecordId, currentUserId, loginEmail) {
+        val parsed = summary
+        if (parsed == null) {
+            serverRecommendations = null
+            return@LaunchedEffect
+        }
+
+        val request = buildRecommendationRequest(
+            userKey = currentUserId?.toString() ?: loginEmail.trim().ifBlank { null },
+            recordId = currentRecordId,
+            summary = parsed,
+            filters = recommendationFilters,
+            tagPreferenceWeights = tagPreferenceWeights
+        )
+
+        // TODO: Replace the fallback behavior after the backend contract is stable.
+        // The server should return productId plus match data, and may include product
+        // card fields. If product fields are omitted, hydrate them through getProducts().
+        serverRecommendations = withContext(Dispatchers.IO) {
+            runCatching {
+                val recommendedItems = RecommendationClient.api
+                    .createRecommendations(request)
+                    .recommendations
+                val missingProductIds = recommendedItems
+                    .filter { it.product == null }
+                    .map { it.productId }
+                    .distinct()
+                val productsById = if (missingProductIds.isEmpty()) {
+                    emptyMap()
+                } else {
+                    RecommendationClient.api
+                        .getProducts(ProductBatchRequest(missingProductIds))
+                        .products
+                        .associateBy { it.id }
+                }
+
+                recommendedItems
+                    .map { recommendation ->
+                        recommendation
+                            .copy(product = recommendation.product ?: productsById[recommendation.productId])
+                            .toModel()
+                    }
+                    .filter { it.title.isNotBlank() }
+                    .takeIf { it.isNotEmpty() }
+            }.getOrNull()
+        }
+    }
+    val recommendations = remember(
+        summary,
+        recommendationFilters,
+        currentRecordId,
+        feedbackByProduct,
+        serverRecommendations
+    ) {
         val recordId = currentRecordId
-        buildRecommendationMocks(context, summary, recommendationFilters).map { item ->
+        val sourceItems = serverRecommendations
+            ?.let { filterRecommendationItems(it, recommendationFilters) }
+            ?: buildRecommendationMocks(context, summary, recommendationFilters)
+
+        sourceItems.map { item ->
             val feedback = recordId?.let { feedbackByProduct[it to item.id] }
             item.copy(
                 userRating = feedback?.userRating,
@@ -171,16 +230,23 @@ internal fun FashionCapstoneApp() {
             )
         }
     }
-    val colourFilterOptions = remember(summary, recommendationFilters) {
-        buildRecommendationMocks(
+    val colourFilterOptions = remember(summary, recommendationFilters, serverRecommendations) {
+        (serverRecommendations ?: buildRecommendationMocks(
             context = context,
             summary = summary,
-            filters = recommendationFilters.copy(selectedBaseColour = "All")
-        )
+            filters = recommendationFilters.copy(selectedBaseColour = setOf("All"))
+        ))
             .map { it.baseColour }
             .filter { it.isNotBlank() && it != "NA" }
             .distinct()
             .sorted()
+    }
+    val styleTagFilterOptions = remember(recommendations, tagPreferenceWeights) {
+        (recommendations.flatMap { it.matchedTags + it.productTags } + tagPreferenceWeights.keys)
+            .filter { tag -> tag.isNotBlank() }
+            .distinct()
+            .sorted()
+            .take(16)
     }
     val historyEntries = remember(localRecords, storedRecommendationEntities, feedbackByProduct) {
         val recommendationsByRecord = storedRecommendationEntities.groupBy { it.recordId }
@@ -189,6 +255,9 @@ internal fun FashionCapstoneApp() {
                 Instant.ofEpochMilli(record.createdAt).atZone(ZoneId.systemDefault())
             )
             val recordRecommendations = recommendationsByRecord[record.recordId].orEmpty().map { entity ->
+                // TODO: When backend product APIs are ready, combine this local
+                // recordId/productId mapping with server product list/detail data
+                // before creating the HistoryEntry shown on screen.
                 entity.toModel(feedbackByProduct[record.recordId to entity.productId])
             }
             HistoryEntry(
@@ -240,6 +309,9 @@ internal fun FashionCapstoneApp() {
             mockRecommendationServer.saveRecommendations(recordId, items)
             recommendationItemDao.upsertAll(
                 items.map { item ->
+                    // TODO: After server products become canonical, store only
+                    // the local recommendation mapping fields needed for history:
+                    // recordId, productId, matchedTags, matchScore, rank, createdAt.
                     item.toEntity(
                         recordId = recordId,
                         createdAt = System.currentTimeMillis()
@@ -250,6 +322,10 @@ internal fun FashionCapstoneApp() {
     }
 
     suspend fun adjustTagPreferences(tags: List<String>, delta: Double) {
+        // TODO: Replace this rule-based delta with TFLite inference after
+        // personalization_tag_weight.tflite is added to assets. Suggested model
+        // inputs: tag id/index, rating, dwell score, view count, match score, and
+        // current weight. Suggested output: per-tag weight delta stored in Room.
         tags.distinct().filter { it.isNotBlank() }.forEach { tag ->
             val current = tagPreferenceDao.getByTag(tag)
             val nextWeight = ((current?.weight ?: 0.0) + delta).coerceIn(-1.0, 1.0)
@@ -365,6 +441,54 @@ internal fun FashionCapstoneApp() {
                     authMessage = null
                 },
                 onLogin = {
+                    val validationMessage = validateLoginInput(
+                        email = loginEmail,
+                        password = loginPassword
+                    )
+
+                    if (validationMessage != null) {
+                        authMessage = validationMessage
+                        return@LoginScreen
+                    }
+
+                    scope.launch {
+                        authLoading = true
+                        authMessage = null
+
+                        val result = withContext(Dispatchers.IO) {
+                            runCatching {
+                                AuthClient.api.login(
+                                    LoginRequest(
+                                        email = loginEmail.trim(),
+                                        password = loginPassword
+                                    )
+                                )
+                            }
+                        }
+
+                        result.fold(
+                            onSuccess = { response ->
+                                authLoading = false
+                                authMessage = response.message
+
+                                if (response.success) {
+                                    currentUserId = response.userId
+                                    accountName = response.username
+                                        ?: loginEmail.substringBefore("@").ifBlank { "사용자" }
+                                    profileHeightInput = response.height?.toString() ?: profileHeightInput
+                                    profileWeightInput = response.weight?.toString() ?: profileWeightInput
+                                    loginPassword = ""
+                                    currentScreen = AppScreen.Home
+                                }
+                            },
+                            onFailure = { error ->
+                                authLoading = false
+                                authMessage = error.message ?: "로그인 요청에 실패했습니다."
+                            }
+                        )
+                    }
+                    return@LoginScreen
+
                     // TODO: 백엔드 로그인 API 연결 시 아래 임시 우회 코드를 제거하고 서버 로그인 로직을 복원하세요.
                     accountName = loginEmail.substringBefore("@").ifBlank { "사용자" }
                     loginPassword = ""
@@ -628,6 +752,7 @@ internal fun FashionCapstoneApp() {
                 recommendations = recommendations,
                 filters = recommendationFilters,
                 colourOptions = colourFilterOptions,
+                styleTagOptions = styleTagFilterOptions,
                 tagPreferenceWeights = tagPreferenceWeights,
                 onFiltersChange = { recommendationFilters = it },
                 onSelect = {
@@ -698,6 +823,7 @@ internal fun FashionCapstoneApp() {
                 },
                 onDeleteAccount = {
                     accountName = "사용자"
+                    currentUserId = null
                     loginEmail = ""
                     loginPassword = ""
                     profileHeightInput = ""
@@ -706,9 +832,11 @@ internal fun FashionCapstoneApp() {
                     profileEditWeightInput = ""
                     authMessage = null
                     currentScreen = AppScreen.Login
+                    currentUserId = null
                 },
                 onLogout = {
                     currentScreen = AppScreen.Login
+                    currentUserId = null
                     loginPassword = ""
                     authMessage = null
                 }
