@@ -6,7 +6,6 @@ import retrofit2.http.Body
 import retrofit2.http.POST
 
 
-private const val BASE_URL = "http://223.194.155.182:8080/" // 본인 ip로 실행
 internal data class RegisterRequest(
     val username: String,
     val password: String,
@@ -44,7 +43,7 @@ internal interface AuthApi {
 internal object AuthClient {
     val api: AuthApi by lazy {
         Retrofit.Builder()
-            .baseUrl(BASE_URL)
+            .baseUrl(ApiConfig.BASE_URL)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
             .create(AuthApi::class.java)

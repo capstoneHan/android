@@ -7,8 +7,6 @@ import retrofit2.http.GET
 import retrofit2.http.POST
 import retrofit2.http.Path
 
-private const val RECOMMENDATION_BASE_URL = "http://223.194.155.182:8080/"
-
 internal data class RecommendationRequest(
     val userKey: String?,
     val recordId: String?,
@@ -111,7 +109,7 @@ internal interface RecommendationApi {
 internal object RecommendationClient {
     val api: RecommendationApi by lazy {
         Retrofit.Builder()
-            .baseUrl(RECOMMENDATION_BASE_URL)
+            .baseUrl(ApiConfig.BASE_URL)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
             .create(RecommendationApi::class.java)
